@@ -1,0 +1,264 @@
+
+[2026-06-29 08:56:12] Trial #1
+  Total runtime          : 48.80s
+  Average FPS            : 29.5
+  Total frames processed : 1442
+
+  Total inference        : 1441
+  Avg                    : 2.67 ms
+  Min                    : 2.28 ms
+  Max                    : 5.15 ms
+  Std Dev                : 0.32 ms
+  P95                    : 3.19 ms
+
+[2026-06-29 09:12:26] Trial #2
+  Total runtime          : 38.04s
+  Average FPS            : 29.7
+  Total frames processed : 1131
+
+  Total inference        : 1130
+  Avg                    : 2.58 ms
+  Min                    : 2.33 ms
+  Max                    : 4.15 ms
+  Std Dev                : 0.24 ms
+  P95                    : 3.10 ms
+
+[2026-06-29 09:23:54] Trial #3
+  Total runtime          : 225.86s
+  Average FPS            : 30.0
+  Total frames processed : 6766
+
+  Total inference        : 6249
+  Avg                    : 2.67 ms
+  Min                    : 2.28 ms
+  Max                    : 6.37 ms
+  Std Dev                : 0.29 ms
+  P95                    : 3.21 ms
+
+[2026-06-29 10:02:17] Trial #4
+  Total runtime          : 71.74s
+  Average FPS            : 29.9
+  Total frames processed : 2143
+
+  Total inference        : 2142
+  Avg                    : 2.58 ms
+  Min                    : 1.65 ms
+  Max                    : 5.70 ms
+  Std Dev                : 0.29 ms
+  P95                    : 3.07 ms
+
+[2026-06-29 10:07:27] Trial #5
+  Total runtime          : 97.65s
+  Average FPS            : 29.9
+  Total frames processed : 2919
+
+  Total inference        : 2584
+  Avg                    : 2.70 ms
+  Min                    : 2.34 ms
+  Max                    : 5.60 ms
+  Std Dev                : 0.31 ms
+  P95                    : 3.30 ms
+
+[2026-06-29 13:57:38] Trial #6
+  Total runtime          : 91.11s
+  Average FPS            : 29.9
+  Total frames processed : 2722
+
+  Total inference        : 2711
+  Avg                    : 2.58 ms
+  Min                    : 2.24 ms
+  Max                    : 5.31 ms
+  Std Dev                : 0.26 ms
+  P95                    : 3.08 ms
+
+[2026-06-29 16:17:21] Trial #7
+  Total runtime          : 84.36s
+  Average FPS            : 29.9
+  Total frames processed : 2521
+
+  Total inference        : 1680
+  Avg                    : 2.70 ms
+  Min                    : 2.33 ms
+  Max                    : 4.86 ms
+  Std Dev                : 0.30 ms
+  P95                    : 3.27 ms
+
+[2026-06-29 16:21:48] Trial #8
+  Total runtime          : 121.40s
+  Average FPS            : 29.9
+  Total frames processed : 3632
+
+  Total inference        : 3553
+  Avg                    : 2.60 ms
+  Min                    : 2.24 ms
+  Max                    : 5.60 ms
+  Std Dev                : 0.25 ms
+  P95                    : 3.08 ms
+
+[2026-06-29 16:24:06] Trial #9
+  Total runtime          : 9.66s
+  Average FPS            : 29.0
+  Total frames processed : 281
+
+  Total inference        : 340
+  Avg                    : 2.58 ms
+  Min                    : 2.25 ms
+  Max                    : 3.68 ms
+  Std Dev                : 0.27 ms
+  P95                    : 3.13 ms
+
+[2026-06-29 16:26:06] Trial #10
+  Total runtime          : 78.16s
+  Average FPS            : 29.8
+  Total frames processed : 2332
+
+  Total inference        : 2456
+  Avg                    : 2.64 ms
+  Min                    : 1.61 ms
+  Max                    : 15.62 ms
+  Std Dev                : 0.45 ms
+  P95                    : 3.25 ms
+
+[2026-06-29 16:28:26] Trial #11
+  Total runtime          : 84.81s
+  Average FPS            : 29.9
+  Total frames processed : 2534
+
+  Total inference        : 2991
+  Avg                    : 2.60 ms
+  Min                    : 2.24 ms
+  Max                    : 5.64 ms
+  Std Dev                : 0.26 ms
+  P95                    : 3.11 ms
+
+[2026-06-30 11:32:12] Trial #12
+  Total runtime          : 80.19s
+  Average FPS            : 29.8
+  Total frames processed : 2392
+
+  Total inference        : 2391
+  Avg                    : 2.60 ms
+  Min                    : 2.28 ms
+  Max                    : 4.73 ms
+  Std Dev                : 0.27 ms
+  P95                    : 3.14 ms
+
+[2026-06-30 11:45:02] Trial #13
+  Total runtime          : 58.30s
+  Average FPS            : 29.8
+  Total frames processed : 1740
+
+  Total inference        : 1739
+  Avg                    : 2.61 ms
+  Min                    : 2.28 ms
+  Max                    : 5.03 ms
+  Std Dev                : 0.29 ms
+  P95                    : 3.20 ms
+
+[2026-06-30 13:38:19] Trial #14
+  Total runtime          : 100.19s
+  Average FPS            : 29.9
+  Total frames processed : 2996
+
+  Total inference        : 2975
+  Avg                    : 2.60 ms
+  Min                    : 1.65 ms
+  Max                    : 6.64 ms
+  Std Dev                : 0.30 ms
+  P95                    : 3.14 ms
+
+[2026-06-30 13:44:46] Trial #15
+  Total runtime          : 70.75s
+  Average FPS            : 29.9
+  Total frames processed : 2113
+
+  Total inference        : 2110
+  Avg                    : 2.59 ms
+  Min                    : 2.27 ms
+  Max                    : 4.13 ms
+  Std Dev                : 0.26 ms
+  P95                    : 3.08 ms
+
+[2026-06-30 14:03:43] Trial #16
+  Total runtime          : 159.94s
+  Average FPS            : 29.9
+  Total frames processed : 4788
+
+  Total inference        : 4131
+  Avg                    : 2.62 ms
+  Min                    : 1.66 ms
+  Max                    : 6.50 ms
+  Std Dev                : 0.29 ms
+  P95                    : 3.14 ms
+
+[2026-06-30 14:09:47] Trial #17
+  Total runtime          : 73.33s
+  Average FPS            : 29.8
+  Total frames processed : 2187
+
+  Total inference        : 1900
+  Avg                    : 2.61 ms
+  Min                    : 2.25 ms
+  Max                    : 4.32 ms
+  Std Dev                : 0.25 ms
+  P95                    : 3.09 ms
+
+[2026-06-30 14:13:14] Trial #18
+  Total runtime          : 179.81s
+  Average FPS            : 30.0
+  Total frames processed : 5386
+
+  Total inference        : 5199
+  Avg                    : 2.61 ms
+  Min                    : 2.25 ms
+  Max                    : 5.63 ms
+  Std Dev                : 0.26 ms
+  P95                    : 3.09 ms
+
+[2026-06-30 14:18:45] Trial #19
+  Total runtime          : 184.84s
+  Average FPS            : 30.0
+  Total frames processed : 5536
+
+  Total inference        : 5381
+  Avg                    : 2.62 ms
+  Min                    : 2.28 ms
+  Max                    : 5.55 ms
+  Std Dev                : 0.26 ms
+  P95                    : 3.10 ms
+
+[2026-06-30 14:25:02] Trial #20
+  Total runtime          : 278.36s
+  Average FPS            : 30.0
+  Total frames processed : 8341
+
+  Total inference        : 8060
+  Avg                    : 2.62 ms
+  Min                    : 2.28 ms
+  Max                    : 5.08 ms
+  Std Dev                : 0.27 ms
+  P95                    : 3.10 ms
+
+[2026-06-30 14:38:32] Trial #21
+  Total runtime          : 85.07s
+  Average FPS            : 29.9
+  Total frames processed : 2542
+
+  Total inference        : 2551
+  Avg                    : 2.60 ms
+  Min                    : 2.25 ms
+  Max                    : 6.69 ms
+  Std Dev                : 0.30 ms
+  P95                    : 3.14 ms
+
+[2026-06-30 14:44:01] Trial #22
+  Total runtime          : 276.48s
+  Average FPS            : 29.9
+  Total frames processed : 8278
+
+  Total inference        : 8203
+  Avg                    : 2.62 ms
+  Min                    : 2.28 ms
+  Max                    : 8.55 ms
+  Std Dev                : 0.27 ms
+  P95                    : 3.12 ms
