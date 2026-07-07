@@ -1,3 +1,4 @@
+import argparse
 import cv2
 import numpy as np
 import tensorflow as tf
@@ -87,16 +88,29 @@ last_log_time = time.time()
 log_interval = 2.0
 
 # -----------------------------
-# Setup Webcam
+# Setup Input Source
 # -----------------------------
-print("Opening camera...")
-cap = cv2.VideoCapture(0)
-cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-if not cap.isOpened():
-    print("Error: Could not open webcam.")
-    exit()
-print("Camera started")
+parser = argparse.ArgumentParser(description="EmoSys Inference")
+parser.add_argument("--image", type=str, default=None, help="Path to static image file for testing")
+args = parser.parse_args()
+
+print("Setting up input source...")
+if args.image:
+    print(f"Loading static image: {args.image}")
+    static_frame = cv2.imread(args.image)
+    if static_frame is None:
+        print(f"Error: Could not load image at {args.image}")
+        exit()
+    cap = None
+else:
+    print("Opening camera...")
+    cap = cv2.VideoCapture(0)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    if not cap.isOpened():
+        print("Error: Could not open webcam.")
+        exit()
+    print("Camera started")
 
 # ----------------------------
 # Config
@@ -107,10 +121,10 @@ cached_faces = None
 start = time.time()
 fps_buffer = deque(maxlen=30)
 
-# smoothing
-prediction_buffer = deque(maxlen=30)  # 1s of smoothing at 30 FPS
-last_face_seen    = time.time()
-FACE_TIMEOUT      = 2.0
+# smoothing (per-face)
+face_buffers        = {}   # face_id -> deque of predictions
+last_face_seen      = time.time()
+FACE_TIMEOUT        = 2.0
 
 
 # stress tracking
@@ -121,18 +135,19 @@ FACE_TIMEOUT      = 2.0
 #stress_hold_timer = 0
 #stress_peak = 0
 
-# Graph variables
-emotion_history   = {label: [] for label in emotion_labels.values()}
-time_history      = []
+# Graph variables (per-face)
+face_emotion_history = {}   # face_id -> {label: [values]}
+face_time_history    = {}   # face_id -> [timestamps]
 
 inference_times   = []
 
-# ============================================================
+# ------------------------------------------
 # Helper: draw label with black background
-# ============================================================
+# ------------------------------------------
 FACE_PAD        = 30                # pixels of padding around face box
 TEXT_PAD        = 2                 # pixels of padding around label text
 CONF_THRESHOLD    = 0.22
+MAX_FACES         = 3               # max faces to process per frame
 
 def draw_label(frame, text, tx, ty, font_scale, color):
     font = cv2.FONT_HERSHEY_SIMPLEX
@@ -146,11 +161,113 @@ def draw_label(frame, text, tx, ty, font_scale, color):
     )
     cv2.putText(frame, text, (tx, ty), font, font_scale, color, thickness, cv2.LINE_AA)
 
+def softmax(x):
+    e_x = np.exp(x - np.max(x))
+    return e_x / e_x.sum()
+
+# ------------------------------------------------------------------
+# Centroid Tracker: assigns persistent IDs to faces across frames
+# -----------------------------------------------------------------
+class CentroidTracker:
+    def __init__(self, max_disappeared=50):
+        self.next_id = 0
+        self.objects = {}        # id -> (cx, cy)
+        self.disappeared = {}    # id -> frames disappeared
+        self.max_disappeared = max_disappeared
+
+    def _register(self, centroid):
+        fid = self.next_id
+        self.objects[fid] = centroid
+        self.disappeared[fid] = 0
+        self.next_id += 1
+        return fid
+
+    def _deregister(self, fid):
+        del self.objects[fid]
+        del self.disappeared[fid]
+
+    def update(self, bboxes):
+        """
+        bboxes: list of (x1, y1, x2, y2)
+        Returns: list of face_ids aligned 1-to-1 with input bboxes
+        """
+        input_centroids = [((x1+x2)/2, (y1+y2)/2) for (x1, y1, x2, y2) in bboxes]
+
+        # No detections — mark all existing as disappeared
+        if len(input_centroids) == 0:
+            for fid in list(self.disappeared.keys()):
+                self.disappeared[fid] += 1
+                if self.disappeared[fid] > self.max_disappeared:
+                    self._deregister(fid)
+            return []
+
+        # No existing objects — register all
+        if len(self.objects) == 0:
+            return [self._register(c) for c in input_centroids]
+
+        # Match existing objects to new detections
+        obj_ids = list(self.objects.keys())
+        obj_centroids = list(self.objects.values())
+
+        D = np.zeros((len(obj_centroids), len(input_centroids)))
+        for i, oc in enumerate(obj_centroids):
+            for j, ic in enumerate(input_centroids):
+                D[i, j] = np.sqrt((oc[0]-ic[0])**2 + (oc[1]-ic[1])**2)
+
+        assignments = {}      # input_idx -> face_id
+        used_objs = set()
+        used_inputs = set()
+
+        # Greedy nearest-first matching
+        flat_order = np.argsort(D, axis=None)
+        for flat_idx in flat_order:
+            row = flat_idx // len(input_centroids)
+            col = flat_idx % len(input_centroids)
+            if row in used_objs or col in used_inputs:
+                continue
+            if D[row, col] > 150:      # max pixel distance threshold
+                break
+            assignments[col] = obj_ids[row]
+            self.objects[obj_ids[row]] = input_centroids[col]
+            self.disappeared[obj_ids[row]] = 0
+            used_objs.add(row)
+            used_inputs.add(col)
+
+        # Unmatched existing objects
+        for i in range(len(obj_ids)):
+            if i not in used_objs:
+                fid = obj_ids[i]
+                self.disappeared[fid] += 1
+                if self.disappeared[fid] > self.max_disappeared:
+                    self._deregister(fid)
+
+        # Unmatched new detections
+        for j in range(len(input_centroids)):
+            if j not in used_inputs:
+                assignments[j] = self._register(input_centroids[j])
+
+        return [assignments[j] for j in range(len(input_centroids))]
+
+tracker = CentroidTracker(max_disappeared=50)
+
+# Color palette for face ID labels
+FACE_COLORS = [
+    (255, 0, 255),   # magenta
+    (0, 255, 255),   # cyan
+    (0, 255, 0),     # green
+]
+
 
 while True:
     
-    # Capture frame from Webcam
-    ret, frame = cap.read()
+    # Capture frame from Webcam or Image
+    if args.image:
+        frame = static_frame.copy()
+        ret = True
+        time.sleep(0.033)  # simulate ~30fps so it doesn't run infinitely fast
+    else:
+        ret, frame = cap.read()
+        
     if not ret:
         print("Failed to grab frame.")
         break
@@ -167,17 +284,29 @@ while True:
     else:
         faces = cached_faces
         
-    # Clear buffer if no face for a while 
+    # Clear per-face buffers if no face for a while
     if faces is None:
         if time.time() - last_face_seen > FACE_TIMEOUT:
-            prediction_buffer.clear()
+            face_buffers.clear()
     else:
         last_face_seen = time.time()
 
-    if faces is not None:
-        for face in faces:
-            x, y, w_box, h_box = face[:4].astype(int)
+    frame_preds = {}       # face_id -> preds (this frame)
+    total_infer_ms = 0
 
+    if faces is not None:
+        # Limit to MAX_FACES largest faces
+        face_list = faces
+        if len(face_list) > MAX_FACES:
+            areas = [face_list[i][2] * face_list[i][3] for i in range(len(face_list))]
+            top_face_idx = np.argsort(areas)[-MAX_FACES:]
+            face_list = face_list[top_face_idx]
+
+        # Compute bounding boxes for tracker
+        bboxes = []
+        face_rects = []   # (x1, y1, x2, y2) per face for drawing
+        for face in face_list:
+            x, y, w_box, h_box = face[:4].astype(int)
             x = max(0, x)
             y = max(0, y)
             w_box = min(w_box, w - x)
@@ -188,7 +317,13 @@ while True:
             y1 = max(0, y - pad)
             x2 = min(w, x + w_box + pad)
             y2 = min(h, y + h_box + pad)
+            bboxes.append((x1, y1, x2, y2))
+            face_rects.append((x1, y1, x2, y2))
 
+        # Get persistent face IDs from tracker
+        face_ids = tracker.update(bboxes)
+
+        for idx, (fid, (x1, y1, x2, y2)) in enumerate(zip(face_ids, face_rects)):
             face_crop = frame[y1:y2, x1:x2]
             if face_crop.size == 0:
                 continue
@@ -209,6 +344,7 @@ while True:
             interpreter.invoke()
             infer_time_ms = (time.time() - infer_start) * 1000
             
+            total_infer_ms += infer_time_ms
             inference_times.append(infer_time_ms)
 
             preds = interpreter.get_tensor(output_details[0]['index'])[0]
@@ -218,69 +354,36 @@ while True:
                 -0.5,   # Disgust 
                 0.0,   # Fear 
                 1.0,   # Happy 
-                0.8,   # Neutral 
-                -0.5,   # Sad 
+                1.0,   # Neutral 
+                0.0,   # Sad 
                 0.0    # Surprise 
             ])
             preds = preds + calibration_biases
-
-            def softmax(x):
-                e_x = np.exp(x - np.max(x))
-                return e_x / e_x.sum()
-
             preds = softmax(preds)
+            frame_preds[fid] = preds
 
-            # smoothing
-            prediction_buffer.append(preds)
-            avg_preds = np.mean(prediction_buffer, axis=0)
-            
-            # Track Emotion confidence over time for the graph
-            time_history.append(time.time() - start)
+            # --- Per-face smoothing ---
+            if fid not in face_buffers:
+                face_buffers[fid] = deque(maxlen=30)
+            face_buffers[fid].append(preds)
+            avg_preds = np.mean(face_buffers[fid], axis=0)
+
+            # --- Per-face emotion history for graph ---
+            if fid not in face_emotion_history:
+                face_emotion_history[fid] = {label: [] for label in emotion_labels.values()}
+                face_time_history[fid] = []
+
+            face_time_history[fid].append(time.time() - start)
             for i in range(len(avg_preds)):
-                emotion_history[emotion_labels[i]].append(avg_preds[i] * 100)
+                face_emotion_history[fid][emotion_labels[i]].append(avg_preds[i] * 100)
 
             # -----------------------------
-            # Prediction Output
+            # Per-face Prediction & Drawing
             # -----------------------------
             top_indices = np.argsort(avg_preds)[-3:][::-1]   # top-3, high =>low
-            top1_idx    = top_indices[0]            
-            top1_conf = avg_preds[top1_idx]
-            top1_label = emotion_labels[top1_idx]
-
-            current_time = time.time()
-  
-                  
-            
-            # -----------------------------
-            # Logging
-            # -----------------------------
-            if current_time - last_log_time > log_interval:
-                timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-
-                lines = [f"\n[{timestamp}]"]
-                lines.append(f"  {'Emotion':<10} {'Conf':>6}  {'Bar'}")
-                lines.append(f"  {'-'*9}  {'-'*6}  {'-'*20}")
-
-                sorted_emotions = sorted(
-                    [(emotion_labels[i], avg_preds[i]) for i in range(len(avg_preds))],
-                    key=lambda x: x[1],
-                    reverse=True
-                )
-
-                for label, conf in sorted_emotions:
-                    bar_len = int(conf * 20)
-                    bar = "█" * bar_len + "░" * (20 - bar_len)
-                    marker = " ◄" if label == top1_label else ""
-                    lines.append(f"  {label:<10} {conf*100:>5.1f}%  {bar}{marker}")
-                    
-
-                log_text = "\n".join(lines)
-                log_file.write(log_text + "\n")
-                log_file.flush()
-
-                history_buffer.append(f"[{timestamp}] {top1_label.upper()} {top1_conf*100:.1f}%")
-
-                last_log_time = current_time
+            top1_idx    = top_indices[0]
+            top1_conf   = avg_preds[top1_idx]
+            top1_label  = emotion_labels[top1_idx]
 
             # -----------------------------
             # Stress calculation
@@ -289,7 +392,7 @@ while True:
             stress_score = 0
             max_stress = 0
 
-            for i, prob in enumerate(avg_preds):
+            for i, prob in enumerate(preds):
                 label = emotion_labels[i]
                 weight = stress_map[label]
                 
@@ -343,30 +446,25 @@ while True:
             # -----------------------------
             # DRAW FACE BOX
             # -----------------------------
-            cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 255), 2)
+            box_color = FACE_COLORS[idx % len(FACE_COLORS)]
+            cv2.rectangle(frame, (x1, y1), (x2, y2), box_color, 2)
             
-            # Draw emotion labels
+            # Face ID label
+            draw_label(frame, f"Face #{fid}", x2 - 70, y2 + 18, 0.5, box_color)
+
+            # Draw emotion labels per face
             if top1_conf < CONF_THRESHOLD:
                 draw_label(frame, "Uncertain", x1, y1 - 10, 0.8, (0, 165, 255))
             else:
-                for rank, idx in enumerate(top_indices):
-                    lbl        = emotion_labels[idx]
-                    conf_pct   = avg_preds[idx] * 100
+                for rank, eidx in enumerate(top_indices):
+                    lbl        = emotion_labels[eidx]
+                    conf_pct   = avg_preds[eidx] * 100
                     text       = f"{lbl}: {conf_pct:.1f}%"
-                    color      = (255, 0, 255) if rank == 0 else (100, 255, 0)
-                    font_scale = 0.8           if rank == 0 else 0.6
+                    color      = box_color if rank == 0 else (100, 255, 0)
+                    font_scale = 0.8       if rank == 0 else 0.6
                     ty         = y1 - 10 - (rank * 25)
                     draw_label(frame, text, x1, ty, font_scale, color)
-                    
-            # Inference time box
-            infer_text = f"Infer: {infer_time_ms:.1f}ms"
-            (tw, th), _ = cv2.getTextSize(infer_text, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 1)
-            box_x = w - tw - 20
-            cv2.rectangle(frame, (box_x - 6, 10), (w - 10, 10 + th + 10), (0, 0, 0), -1)
-            cv2.putText(frame, infer_text, (box_x, 10 + th + 2),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 255), 1, cv2.LINE_AA)
 
-            
             """
             # -----------------------------
             # Stress bar
@@ -393,6 +491,56 @@ while True:
                         0.5,
                         stress_color, 1)
             """
+    else:
+        tracker.update([])   # keep tracker ticking when no faces
+
+    # ---------------------------------------------------------
+    # Per-face logging (outside face loop)
+    # ---------------------------------------------------------
+    if frame_preds:
+        current_time = time.time()
+
+        if current_time - last_log_time > log_interval:
+            timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+
+            for fid, preds in frame_preds.items():
+                avg_p = np.mean(face_buffers[fid], axis=0) if fid in face_buffers else preds
+                top1_idx   = np.argmax(avg_p)
+                top1_label = emotion_labels[top1_idx]
+                top1_conf  = avg_p[top1_idx]
+
+                lines = [f"\n[{timestamp}] Face #{fid}"]
+                lines.append(f"  {'Emotion':<10} {'Conf':>6}  {'Bar'}")
+                lines.append(f"  {'-'*9}  {'-'*6}  {'-'*20}")
+
+                sorted_emotions = sorted(
+                    [(emotion_labels[i], avg_p[i]) for i in range(len(avg_p))],
+                    key=lambda x: x[1],
+                    reverse=True
+                )
+
+                for label, conf in sorted_emotions:
+                    bar_len = int(conf * 20)
+                    bar = "█" * bar_len + "░" * (20 - bar_len)
+                    marker = " ◄" if label == top1_label else ""
+                    lines.append(f"  {label:<10} {conf*100:>5.1f}%  {bar}{marker}")
+
+                log_text = "\n".join(lines)
+                log_file.write(log_text + "\n")
+                log_file.flush()
+
+                history_buffer.append(f"[{timestamp}] F#{fid}: {top1_label.upper()} {top1_conf*100:.1f}%")
+
+            last_log_time = current_time
+
+        # Inference time box (total across all faces)
+        n_faces_now = len(frame_preds)
+        infer_text = f"Infer: {total_infer_ms:.1f}ms ({n_faces_now}f)"
+        (tw, th_text), _ = cv2.getTextSize(infer_text, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 1)
+        box_x = w - tw - 20
+        cv2.rectangle(frame, (box_x - 6, 10), (w - 10, 10 + th_text + 10), (0, 0, 0), -1)
+        cv2.putText(frame, infer_text, (box_x, 10 + th_text + 2),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 255), 1, cv2.LINE_AA)
             
     # -----------------------------
     # History UI
@@ -473,10 +621,11 @@ while True:
         log_file.close()
         break
 
-cap.release()
+if cap is not None:
+    cap.release()
 
 # -----------------------------
-# Plot emotion confidence graph
+# Plot emotion confidence graph (per-face)
 # -----------------------------
 emotion_colors = {
     "angry":    "#FF4444",
@@ -490,52 +639,67 @@ emotion_colors = {
 
 run_datetime = time.strftime("%A, %d %B %Y  |  %H:%M:%S")
 
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(18, 6))
-fig.suptitle(f"QAT + KD TFLite Trial #{run_count}  —  {run_datetime}", fontsize=10, color="gray")
+# Sort face IDs for consistent ordering
+tracked_faces = sorted(face_emotion_history.keys())
+n_faces = max(len(tracked_faces), 1)
 
-# --- Line chart ---
-ax1.set_title("QAT + KD TFLite Emotion Confidence Over Time", fontsize=13, fontweight="bold")
-for label, values in emotion_history.items():
-    if len(values) > 0:
-        ax1.plot(time_history, values,
-                 label=label,
-                 color=emotion_colors.get(label, "white"),
-                 linewidth=1.5,
-                 alpha=0.85)
+fig, axes = plt.subplots(n_faces, 2, figsize=(18, 6 * n_faces), squeeze=False)
+fig.suptitle(f"QAT + KD TFLite Trial #{run_count}  \u2014  {run_datetime}", fontsize=12, color="gray")
 
-ax1.set_xlabel("Time (s)")
-ax1.set_ylabel("Confidence (%)")
-ax1.set_ylim(0, 100)
-ax1.legend(loc="upper right")
-ax1.grid(True, alpha=0.3)
+for row, fid in enumerate(tracked_faces):
+    ax_line = axes[row][0]
+    ax_bar  = axes[row][1]
 
-# --- Bar chart ---
-ax2.set_title("QAT + KD TFLite Average Confidence Per Emotion", fontsize=13, fontweight="bold")
+    emo_hist = face_emotion_history[fid]
+    t_hist   = face_time_history[fid]
 
-avg_per_emotion = {
-    label: np.mean(values) if len(values) > 0 else 0
-    for label, values in emotion_history.items()
-}
+    # --- Line chart ---
+    ax_line.set_title(f"Face #{fid} — Emotion Confidence Over Time", fontsize=13, fontweight="bold")
+    for label, values in emo_hist.items():
+        if len(values) > 0:
+            ax_line.plot(t_hist, values,
+                         label=label,
+                         color=emotion_colors.get(label, "white"),
+                         linewidth=1.5,
+                         alpha=0.85)
 
-sorted_emotions = sorted(avg_per_emotion.items(), key=lambda x: x[1], reverse=True)
-labels  = [e[0] for e in sorted_emotions]
-values  = [e[1] for e in sorted_emotions]
-colors  = [emotion_colors.get(l, "gray") for l in labels]
+    ax_line.set_xlabel("Time (s)")
+    ax_line.set_ylabel("Confidence (%)")
+    ax_line.set_ylim(0, 100)
+    ax_line.legend(loc="upper right", fontsize=8)
+    ax_line.grid(True, alpha=0.3)
 
-bars = ax2.bar(labels, values, color=colors, edgecolor="white", linewidth=0.5)
+    # --- Bar chart ---
+    ax_bar.set_title(f"Face #{fid} — Average Confidence Per Emotion", fontsize=13, fontweight="bold")
 
-# Add percentage label on top of each bar
-for bar, val in zip(bars, values):
-    ax2.text(bar.get_x() + bar.get_width() / 2,
-             bar.get_height() + 0.5,
-             f"{val:.1f}%",
-             ha="center", va="bottom",
-             fontsize=9, fontweight="bold", color="black")
+    avg_per_emotion = {
+        label: np.mean(values) if len(values) > 0 else 0
+        for label, values in emo_hist.items()
+    }
 
-ax2.set_xlabel("Emotion")
-ax2.set_ylabel("Average Confidence (%)")
-ax2.set_ylim(0, 100)
-ax2.grid(True, alpha=0.3, axis="y")
+    sorted_emotions = sorted(avg_per_emotion.items(), key=lambda x: x[1], reverse=True)
+    labels_list = [e[0] for e in sorted_emotions]
+    values_list = [e[1] for e in sorted_emotions]
+    colors_list = [emotion_colors.get(l, "gray") for l in labels_list]
+
+    bars = ax_bar.bar(labels_list, values_list, color=colors_list, edgecolor="white", linewidth=0.5)
+
+    for bar, val in zip(bars, values_list):
+        ax_bar.text(bar.get_x() + bar.get_width() / 2,
+                    bar.get_height() + 0.5,
+                    f"{val:.1f}%",
+                    ha="center", va="bottom",
+                    fontsize=9, fontweight="bold", color="black")
+
+    ax_bar.set_xlabel("Emotion")
+    ax_bar.set_ylabel("Average Confidence (%)")
+    ax_bar.set_ylim(0, 100)
+    ax_bar.grid(True, alpha=0.3, axis="y")
+
+# Handle case where no faces were detected at all
+if len(tracked_faces) == 0:
+    axes[0][0].set_title("No faces detected", fontsize=13)
+    axes[0][1].set_title("No faces detected", fontsize=13)
 
 plt.tight_layout()
 
