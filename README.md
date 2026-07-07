@@ -6,6 +6,7 @@ This project was specifically engineered for deployment on constrained edge devi
 
 ## Key Features
 
+* **Multi-Face Tracking:** Features a built-in `CentroidTracker` capable of simultaneously tracking individual faces with persistent Face IDs. Each person receives their own isolated temporal smoothing buffer and separate emotion history graphs/logs.
 * **Knowledge Distillation (KD):** A small, fast "Student" model (MobileNetV2, alpha=0.5) was trained by mimicking the deep feature extraction of a massive "Teacher" model, retaining high accuracy while cutting inference time by 80%.
 * **Quantization-Aware Training (QAT):** The model weights are quantized down to **INT8 (8-bit)** integers, severely reducing RAM usage and allowing for high FPS on edge CPUs without suffering from catastrophic mode collapse.
 * **Focal Loss Implementation:** Forces the lightweight network to focus on difficult micro-expressions (like furrowed brows) rather than relying on lazy macro-features (like open mouths), completely eliminating "Sad" and "Surprise" biases.
@@ -23,14 +24,21 @@ pip install tensorflow opencv-python numpy
 
 1. Clone or download this repository.
 2. Ensure you have the `qat_student_int8.tflite` model file in the same directory as the script.
-3. Run the live webcam inference script:
+3. Run the inference script:
 
+**Live Webcam Mode:**
 ```bash
 python qat_student_tflite.py
 ```
 
-4. A window will open displaying your webcam feed with real-time bounding boxes and a live emotion confidence graph. 
-5. To exit the program, press **`q`** on your keyboard.
+**Static Image Injection Mode:**
+To eliminate live webcam noise and test the model's raw inference capabilities on a single sterile frame, use the `--image` flag:
+```bash
+python qat_student_tflite.py --image sad.jpeg
+```
+
+4. A window will open displaying the feed/image with real-time bounding boxes, individual Face IDs, and live emotion confidence predictions. 
+5. To exit the program, press **`q`** on your keyboard. Upon exiting, the system will generate and save a per-face summary graph containing each tracked individual's emotion timelines.
 
 ## Calibration (Optional)
 
