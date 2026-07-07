@@ -1,4 +1,5 @@
 # EmoSys - Real-Time Edge AI Emotion Detection
+### This project was built throughout my internship at SMD Semiconductor
 
 EmoSys is a lightweight, highly optimized Edge AI emotion recognition system. It utilizes a custom-trained **MobileNetV2** architecture to detect 7 core human emotions (Angry, Disgust, Fear, Happy, Neutral, Sad, Surprise) in real-time via a standard USB webcam. 
 
@@ -44,3 +45,20 @@ python qat_student_tflite.py --image sad.jpeg
 
 If the model behaves slightly differently due to your specific room lighting or face shape, you can easily tune the model's sensitivity without retraining it.
 Open `qat_student_tflite.py` and modify the `calibration_biases` array to apply positive or negative numerical boosts to specific emotions.
+
+## Repository Structure
+### Core Models & Inference
+* **`qat_student_tflite.py`**: The main execution script. It captures the live webcam feed (or a static image), utilizes YuNet for rapid face detection, and runs the quantized student model for real-time, multi-face emotion tracking. Handles live drawing, smoothing, and end-of-session graph generation.
+* **`qat_student_int8.tflite`**: The highly compressed INT8 quantized MobileNetV2 "Student" model used for edge inference.
+* **`face_detection_yunet_2023mar.onnx`**: The YuNet face detection model. It is extremely lightweight and is used by the system to locate face bounding boxes before passing them to the emotion classifier.
+
+### Training & Development
+* **`v2-t2-kd-qat-model-mobilenetv2.ipynb`** (and `.py`): The complete training pipeline. Contains the code for Knowledge Distillation (Teacher-to-Student feature matching), Focal Loss implementation to balance difficult classes, Quantization-Aware Training (QAT), and exporting the final `.tflite` model.
+* **`labels_FER.json`**: A simple dictionary file mapping the model's numerical tensor outputs to the 7 human emotion string labels (Angry, Disgust, Fear, Happy, Neutral, Sad, Surprise).
+* **`requirement.txt`**: Lists all required Python dependencies to run the inference and training environments.
+
+### Output & Logging Directories
+* **`graph/`**: Stores the automatically generated per-face summary charts (line charts for emotion over time + bar charts for average confidence) saved when you exit the script.
+* **`log/`**: Stores timestamped text files containing raw emotion confidence data and inference speed diagnostics for post-session programmatic analysis.
+* **`run_counter/`**: A small utility folder that keeps track of the total number of trial sessions run by the system.
+* **`Still_Images/`**: Contains static reference photos used to run the inference script in `--image` injection mode, providing a sterile baseline without webcam noise.
