@@ -1,0 +1,12 @@
+# Ignore output graphs and text logs
+graph/
+log/
+run_counter/
+
+# Ignore Python cache
+__pycache__/
+*.pyc
+
+# Ignore OS files
+.DS_Store
+Thumbs.db
