@@ -8,6 +8,7 @@ import time
 from collections import deque
 # from picamera2 import Picamera2 # no need pycam anymore since switching to webcam
 import matplotlib.pyplot as plt
+import mediapipe as mp
 
 # Run counter
 run_file = "run_counter/QAT_tflite_run_counter.txt"
@@ -257,6 +258,25 @@ FACE_COLORS = [
     (0, 255, 0),     # green
 ]
 
+# ------------------------------------------------------------------
+# MediaPipe Pose: Specialist 2 — Body Language Tracking
+# ------------------------------------------------------------------
+mp_pose    = mp.solutions.pose
+mp_drawing = mp.solutions.drawing_utils
+pose_model = mp_pose.Pose(
+    static_image_mode=False,       # False = optimised for continuous video
+    model_complexity=0,            # 0 = Lite (fastest), best for edge devices
+    min_detection_confidence=0.5,
+    min_tracking_confidence=0.5
+)
+
+# Posture state (updated per frame, shared across faces in the scene)
+posture_label = "Unknown"
+posture_score = 0.0            # 0.0 = Relaxed, 1.0 = Very Tense
+
+# Per-face posture history for graphing
+face_posture_history = {}      # face_id -> [posture_score over time]
+
 
 while True:
     
@@ -276,6 +296,39 @@ while True:
     yunet.setInputSize((w, h))
 
     frame_count += 1
+
+    # ------------------------------------------------------------------
+    # Specialist 2: MediaPipe Pose — run every 3rd frame to save CPU
+    # ------------------------------------------------------------------
+    if frame_count % 3 == 0:
+        frame_rgb    = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        pose_results = pose_model.process(frame_rgb)
+
+        if pose_results.pose_landmarks:
+            lm             = pose_results.pose_landmarks.landmark
+            nose           = lm[mp_pose.PoseLandmark.NOSE]
+            left_shoulder  = lm[mp_pose.PoseLandmark.LEFT_SHOULDER]
+            right_shoulder = lm[mp_pose.PoseLandmark.RIGHT_SHOULDER]
+
+            # Shoulder midpoint Y (all values normalised 0.0–1.0)
+            shoulder_mid_y = (left_shoulder.y + right_shoulder.y) / 2.0
+            nose_y         = nose.y
+
+            # Smaller gap = shoulders raised toward ears = Tense
+            gap = nose_y - shoulder_mid_y
+
+            if gap < 0.15:
+                posture_label = "Tense"
+                posture_score = 1.0
+            elif gap < 0.22:
+                posture_label = "Slightly Tense"
+                posture_score = 0.5
+            else:
+                posture_label = "Relaxed"
+                posture_score = 0.0
+        else:
+            posture_label = "Not Detected"
+            posture_score = 0.0
 
     # detect faces every 2 frames
     if frame_count % 2 == 0:
@@ -452,6 +505,9 @@ while True:
             # Face ID label
             draw_label(frame, f"Face #{fid}", x2 - 70, y2 + 18, 0.5, box_color)
 
+            # Posture label below face box
+            draw_label(frame, f"Posture: {posture_label}", x1, y2 + 38, 0.5, (255, 255, 0))
+
             # Draw emotion labels per face
             if top1_conf < CONF_THRESHOLD:
                 draw_label(frame, "Uncertain", x1, y1 - 10, 0.8, (0, 165, 255))
@@ -464,6 +520,11 @@ while True:
                     font_scale = 0.8       if rank == 0 else 0.6
                     ty         = y1 - 10 - (rank * 25)
                     draw_label(frame, text, x1, ty, font_scale, color)
+
+            # Store posture history for graphing
+            if fid not in face_posture_history:
+                face_posture_history[fid] = []
+            face_posture_history[fid].append(posture_score)
 
             """
             # -----------------------------
@@ -643,7 +704,8 @@ run_datetime = time.strftime("%A, %d %B %Y  |  %H:%M:%S")
 tracked_faces = sorted(face_emotion_history.keys())
 n_faces = max(len(tracked_faces), 1)
 
-fig, axes = plt.subplots(n_faces, 2, figsize=(18, 6 * n_faces), squeeze=False)
+# +1 extra row for the posture graph
+fig, axes = plt.subplots(n_faces + 1, 2, figsize=(18, 6 * (n_faces + 1)), squeeze=False)
 fig.suptitle(f"QAT + KD TFLite Trial #{run_count}  \u2014  {run_datetime}", fontsize=12, color="gray")
 
 for row, fid in enumerate(tracked_faces):
@@ -701,6 +763,61 @@ if len(tracked_faces) == 0:
     axes[0][0].set_title("No faces detected", fontsize=13)
     axes[0][1].set_title("No faces detected", fontsize=13)
 
+# ------------------------------------------------------------------
+# Posture Graph Row (last row, spans both columns)
+# ------------------------------------------------------------------
+ax_posture_line = axes[n_faces][0]
+ax_posture_bar  = axes[n_faces][1]
+
+posture_color_map = {0.0: "#44FF88", 0.5: "#FFD700", 1.0: "#FF4444"}
+
+for fid in tracked_faces:
+    p_hist = face_posture_history.get(fid, [])
+    if len(p_hist) > 0:
+        t_hist = face_time_history[fid][:len(p_hist)]
+        color  = FACE_COLORS[fid % len(FACE_COLORS)]
+        # Convert BGR tuple to hex for matplotlib
+        hex_color = "#{:02x}{:02x}{:02x}".format(color[2], color[1], color[0])
+        ax_posture_line.plot(
+            t_hist, p_hist,
+            label=f"Face #{fid} Posture",
+            color=hex_color,
+            linewidth=1.5,
+            alpha=0.85
+        )
+
+        # Bar: average posture score
+        avg_posture = np.mean(p_hist)
+        ax_posture_bar.bar(
+            f"Face #{fid}",
+            avg_posture * 100,
+            color=hex_color,
+            edgecolor="white",
+            linewidth=0.5
+        )
+        ax_posture_bar.text(
+            f"Face #{fid}",
+            avg_posture * 100 + 1,
+            f"{avg_posture * 100:.1f}%",
+            ha="center", va="bottom",
+            fontsize=9, fontweight="bold"
+        )
+
+ax_posture_line.set_title("Body Language — Posture Tension Over Time", fontsize=13, fontweight="bold")
+ax_posture_line.set_xlabel("Time (s)")
+ax_posture_line.set_ylabel("Tension Score (0=Relaxed, 1=Tense)")
+ax_posture_line.set_ylim(-0.1, 1.2)
+ax_posture_line.axhline(y=0.5, color="yellow", linestyle="--", alpha=0.5, label="Slight Tension Threshold")
+ax_posture_line.axhline(y=1.0, color="red",    linestyle="--", alpha=0.5, label="High Tension Threshold")
+ax_posture_line.legend(loc="upper right", fontsize=8)
+ax_posture_line.grid(True, alpha=0.3)
+
+ax_posture_bar.set_title("Body Language — Average Posture Tension Per Person", fontsize=13, fontweight="bold")
+ax_posture_bar.set_xlabel("Person")
+ax_posture_bar.set_ylabel("Average Tension (%)")
+ax_posture_bar.set_ylim(0, 110)
+ax_posture_bar.grid(True, alpha=0.3, axis="y")
+
 plt.tight_layout()
 
 graph_path = f"graph/qat_kd_tflite_emotion_graph_{time.strftime('%Y%m%d_%H%M')}.png"
@@ -709,3 +826,4 @@ print(f"Graph saved to: {graph_path}")
 plt.show()
 
 cv2.destroyAllWindows()
+pose_model.close()
