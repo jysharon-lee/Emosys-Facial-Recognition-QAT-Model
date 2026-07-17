@@ -326,6 +326,7 @@ while True:
             nose_y         = nose.y
 
             gap = shoulder_mid_y - nose_y   # positive when relaxed, small when tense
+            posture_gap_debug = f"{gap:.3f}"  # store for on-screen debug display
 
             if gap < 0.10:
                 posture_label = "Tense"
@@ -337,8 +338,9 @@ while True:
                 posture_label = "Relaxed"
                 posture_score = 0.0
         else:
-            posture_label = "Not Detected"
-            posture_score = 0.0
+            posture_label     = "Not Detected"
+            posture_score     = 0.0
+            posture_gap_debug = "N/A"
 
     # detect faces every 2 frames
     if frame_count % 2 == 0:
@@ -515,8 +517,8 @@ while True:
             # Face ID label
             draw_label(frame, f"Face #{fid}", x2 - 70, y2 + 18, 0.5, box_color)
 
-            # Posture label below face box
-            draw_label(frame, f"Posture: {posture_label}", x1, y2 + 38, 0.5, (255, 255, 0))
+            # Posture label + raw gap debug value below face box
+            draw_label(frame, f"Posture: {posture_label}  [gap={posture_gap_debug}]", x1, y2 + 38, 0.5, (255, 255, 0))
 
             # Draw emotion labels per face
             if top1_conf < CONF_THRESHOLD:
