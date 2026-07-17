@@ -26,12 +26,12 @@ class ClimateReader:
             print("[ClimateSensor] No COM ports found. Running in offline/mock mode.")
             return
 
-        # Attempt connection to the first port (user can hardcode this later if needed)
+        # Attempt connection to the first port 
         try:
             target_port = ports[0].device
             print(f"[ClimateSensor] Attempting connection to {target_port}...")
             self.ser = serial.Serial(target_port, self.baudrate, timeout=self.timeout)
-            time.sleep(2)  # Wait for Arduino to reset/initialize
+            time.sleep(2)  # Wait for serial device to reset
             print(f"[ClimateSensor] Successfully connected to {target_port}!")
         except Exception as e:
             print(f"[ClimateSensor] Connection failed: {e}")
@@ -56,12 +56,12 @@ class ClimateReader:
                 try:
                     if self.ser.in_waiting > 0:
                         line = self.ser.readline().decode('utf-8').strip()
-                        # Expected format from Arduino: "T:24.5 H:60.2"
+                    
                         self._parse_data(line)
                 except Exception as e:
                     print(f"[ClimateSensor] Error reading serial: {e}")
             else:
-                # Mock Data if no sensor is plugged in (for debugging UI/Graphs)
+                # Mock Data if no sensor is plugged in
                 import random
                 self.current_temp = 24.0 + random.uniform(-0.5, 0.5)
                 self.current_humidity = 55.0 + random.uniform(-2.0, 2.0)
@@ -87,7 +87,7 @@ class ClimateReader:
                     self.current_voc = float(parts[3].strip())
                     self.current_pm = float(parts[4].strip())
         except Exception as e:
-            pass # Ignore malformed serial reads which happen occasionally
+            pass # Ignore malformed serial reads
 
     def get_readings(self):
         """Returns tuple of (Temp, Hum, CO2, VOC, PM). Can return None for values if unavailable."""
