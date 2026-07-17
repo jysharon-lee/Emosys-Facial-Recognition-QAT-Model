@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 import mediapipe as mp
 from mediapipe.tasks import python as mp_python
 from mediapipe.tasks.python import vision as mp_vision
+from climate_sensor import ClimateReader
 
 # Run counter
 run_file = "run_counter/QAT_tflite_run_counter.txt"
@@ -279,7 +280,23 @@ posture_score     = 0.0        # 0.0 = Relaxed, 1.0 = Very Tense
 posture_gap_debug = "..."      
 
 # Per-face posture history for graphing
-face_posture_history = {}     
+face_posture_history = {}      # face_id -> [posture_score over time]
+
+# ------------------------------------------------------------------
+# Specialist 3: Environmental Sensing (ClimateReader)
+# ------------------------------------------------------------------
+climate_sensor = ClimateReader()
+climate_sensor.start()
+
+climate_history = {
+    'time': [],
+    'temp': [],
+    'hum': [],
+    'co2': [],
+    'voc': [],
+    'pm': [],
+    'discomfort': []
+}
 
 
 while True:
@@ -606,6 +623,49 @@ while True:
                     cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 255), 1, cv2.LINE_AA)
             
 
+    # ---------------------------------------------------------
+    # Specialist 3: Read Environment Data & Draw UI
+    # ---------------------------------------------------------
+    t_val, h_val, co2_val, voc_val, pm_val = climate_sensor.get_readings()
+    env_discomfort = 0.0
+
+    if t_val is not None:
+        # Simple Environmental Discomfort Score (0-100%)
+        # Penalties for:
+        # CO2 > 800ppm (+0 to 40)
+        co2_penalty = min(40.0, max(0.0, (co2_val - 800) / 10.0))
+        # VOC > 100 (+0 to 30)
+        voc_penalty = min(30.0, max(0.0, (voc_val - 100) / 2.0))
+        # PM > 25 (+0 to 30)
+        pm_penalty = min(30.0, max(0.0, (pm_val - 25) * 2.0))
+        
+        env_discomfort = min(100.0, co2_penalty + voc_penalty + pm_penalty)
+
+        # Log history for graph
+        if frame_count % 10 == 0:  # Save every 10 frames to avoid huge arrays
+            climate_history['time'].append(time.time() - start)
+            climate_history['temp'].append(t_val)
+            climate_history['hum'].append(h_val)
+            climate_history['co2'].append(co2_val)
+            climate_history['voc'].append(voc_val)
+            climate_history['pm'].append(pm_val)
+            climate_history['discomfort'].append(env_discomfort)
+
+        # Draw Environment UI in Top Right
+        env_x = w - 180
+        env_y = 40
+        cv2.rectangle(frame, (env_x - 10, env_y - 20), (w - 10, env_y + 115), (0, 0, 0), -1)
+        cv2.putText(frame, "Environment:", (env_x, env_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
+        cv2.putText(frame, f"Temp: {t_val:.1f}C", (env_x, env_y + 18), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200, 200, 200), 1)
+        cv2.putText(frame, f"Hum:  {h_val:.1f}%", (env_x, env_y + 36), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200, 200, 200), 1)
+        cv2.putText(frame, f"CO2:  {co2_val:.0f} ppm", (env_x, env_y + 54), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200, 200, 200), 1)
+        cv2.putText(frame, f"VOC:  {voc_val:.0f}", (env_x, env_y + 72), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200, 200, 200), 1)
+        cv2.putText(frame, f"PM:   {pm_val:.0f}", (env_x, env_y + 90), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200, 200, 200), 1)
+        
+        # Color discomfort red if high
+        color_disc = (0, 0, 255) if env_discomfort > 50 else (0, 255, 0)
+        cv2.putText(frame, f"Disc: {env_discomfort:.1f}%", (env_x, env_y + 108), cv2.FONT_HERSHEY_SIMPLEX, 0.45, color_disc, 1)
+
     # History UI
     history_x = 10
     history_y = 60
@@ -685,6 +745,7 @@ while True:
 
 if cap is not None:
     cap.release()
+climate_sensor.stop()
 
 
 # Plot emotion confidence graph (per-face)
@@ -704,8 +765,8 @@ run_datetime = time.strftime("%A, %d %B %Y  |  %H:%M:%S")
 tracked_faces = sorted(face_emotion_history.keys())
 n_faces = max(len(tracked_faces), 1)
 
-# +1 extra row for the posture graph
-fig, axes = plt.subplots(n_faces + 1, 2, figsize=(18, 6 * (n_faces + 1)), squeeze=False)
+# +2 extra rows for the posture graph and climate graph
+fig, axes = plt.subplots(n_faces + 2, 2, figsize=(18, 6 * (n_faces + 2)), squeeze=False)
 fig.suptitle(f"QAT + KD TFLite Trial #{run_count}  \u2014  {run_datetime}", fontsize=12, color="gray")
 
 for row, fid in enumerate(tracked_faces):
@@ -816,6 +877,48 @@ ax_posture_bar.set_xlabel("Person")
 ax_posture_bar.set_ylabel("Average Tension (%)")
 ax_posture_bar.set_ylim(0, 110)
 ax_posture_bar.grid(True, alpha=0.3, axis="y")
+
+# ------------------------------------------------------------------
+# Climate Graph Row (very last row)
+# ------------------------------------------------------------------
+ax_climate_env = axes[n_faces + 1][0]
+ax_climate_disc = axes[n_faces + 1][1]
+
+if len(climate_history['time']) > 0:
+    t_hist = climate_history['time']
+    
+    # Left subplot: Environment metrics
+    ax_climate_env.plot(t_hist, climate_history['co2'], label="CO2 (ppm)", color="#44AAFF", alpha=0.8)
+    ax_climate_env.plot(t_hist, climate_history['voc'], label="VOC", color="#AA44FF", alpha=0.8)
+    ax_climate_env.plot(t_hist, climate_history['pm'], label="PM", color="#FF8800", alpha=0.8)
+    
+    ax_climate_env2 = ax_climate_env.twinx()
+    ax_climate_env2.plot(t_hist, climate_history['temp'], label="Temp (C)", color="#FF4444", linestyle="--")
+    ax_climate_env2.plot(t_hist, climate_history['hum'], label="Humidity (%)", color="#FFD700", linestyle="--")
+    
+    ax_climate_env.set_title("Environment Sensor Data", fontsize=13, fontweight="bold")
+    ax_climate_env.set_xlabel("Time (s)")
+    ax_climate_env.set_ylabel("CO2 / VOC / PM")
+    ax_climate_env2.set_ylabel("Temp / Humidity")
+    
+    # Combine legends
+    lines_1, labels_1 = ax_climate_env.get_legend_handles_labels()
+    lines_2, labels_2 = ax_climate_env2.get_legend_handles_labels()
+    ax_climate_env.legend(lines_1 + lines_2, labels_1 + labels_2, loc="upper left", fontsize=8)
+    
+    # Right subplot: Discomfort score
+    ax_climate_disc.plot(t_hist, climate_history['discomfort'], label="Discomfort Score", color="#FF0000", linewidth=2)
+    ax_climate_disc.axhline(y=50, color="orange", linestyle="--", alpha=0.5, label="Moderate Discomfort")
+    ax_climate_disc.axhline(y=80, color="red", linestyle="--", alpha=0.5, label="High Discomfort")
+    ax_climate_disc.set_title("Environmental Discomfort Level", fontsize=13, fontweight="bold")
+    ax_climate_disc.set_xlabel("Time (s)")
+    ax_climate_disc.set_ylabel("Discomfort (%)")
+    ax_climate_disc.set_ylim(-5, 105)
+    ax_climate_disc.legend(loc="upper left", fontsize=8)
+    ax_climate_disc.grid(True, alpha=0.3)
+else:
+    ax_climate_env.set_title("Environment Data Not Available", fontsize=13)
+    ax_climate_disc.set_title("Environment Data Not Available", fontsize=13)
 
 plt.tight_layout()
 
