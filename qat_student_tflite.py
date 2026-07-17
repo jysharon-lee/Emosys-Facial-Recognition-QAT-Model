@@ -499,9 +499,8 @@ while True:
 
             prev_stress = stress_percent
             """
-            # -----------------------------
+          
             # DRAW FACE BOX
-            # -----------------------------
             box_color = FACE_COLORS[idx % len(FACE_COLORS)]
             cv2.rectangle(frame, (x1, y1), (x2, y2), box_color, 2)
             

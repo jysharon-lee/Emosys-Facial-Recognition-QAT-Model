@@ -10,6 +10,9 @@ class ClimateReader:
         self.ser = None
         self.current_temp = None
         self.current_humidity = None
+        self.current_co2 = None
+        self.current_voc = None
+        self.current_pm = None
         
         self.running = False
         self.thread = None
@@ -58,36 +61,38 @@ class ClimateReader:
                 except Exception as e:
                     print(f"[ClimateSensor] Error reading serial: {e}")
             else:
-                # Mock Data if no sensor is plugged in (for debugging)
-                # self.current_temp = 24.0
-                # self.current_humidity = 55.0
+                # Mock Data if no sensor is plugged in (for debugging UI/Graphs)
+                import random
+                self.current_temp = 24.0 + random.uniform(-0.5, 0.5)
+                self.current_humidity = 55.0 + random.uniform(-2.0, 2.0)
+                self.current_co2 = 600.0 + random.uniform(-50, 50)
+                self.current_voc = 120.0 + random.uniform(-10, 10)
+                self.current_pm = 35.0 + random.uniform(-5, 5)
                 time.sleep(1)
             time.sleep(0.1)
 
     def _parse_data(self, line):
         """
         Parses the incoming serial string. 
-        Adjust this logic based on exactly what your Arduino `Serial.println()` outputs!
-        Assuming format: "Temp: 24.5C  Hum: 60%" or "24.5,60.0"
+        Expected format: "24.5,60.2,800,150,45" 
+        (Temp, Humidity, CO2, VOC, PM)
         """
         try:
-            # Simple CSV parsing (e.g. "24.5,60.2")
             if "," in line:
                 parts = line.split(",")
-                self.current_temp = float(parts[0].strip())
-                self.current_humidity = float(parts[1].strip())
-            # Or Key-Value parsing (e.g. "T:24.5 H:60.2")
-            elif "T:" in line and "H:" in line:
-                t_str = line.split("T:")[1].split()[0]
-                h_str = line.split("H:")[1].split()[0]
-                self.current_temp = float(t_str)
-                self.current_humidity = float(h_str)
+                if len(parts) >= 5:
+                    self.current_temp = float(parts[0].strip())
+                    self.current_humidity = float(parts[1].strip())
+                    self.current_co2 = float(parts[2].strip())
+                    self.current_voc = float(parts[3].strip())
+                    self.current_pm = float(parts[4].strip())
         except Exception as e:
             pass # Ignore malformed serial reads which happen occasionally
 
     def get_readings(self):
-        """Returns tuple of (Temperature, Humidity). Can return (None, None) if unavailable."""
-        return self.current_temp, self.current_humidity
+        """Returns tuple of (Temp, Hum, CO2, VOC, PM). Can return None for values if unavailable."""
+        return (self.current_temp, self.current_humidity, 
+                self.current_co2, self.current_voc, self.current_pm)
 
 if __name__ == "__main__":
     # Test script
