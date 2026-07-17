@@ -278,8 +278,9 @@ pose_model = _PoseLandmarker.create_from_options(
 )
 
 # Posture state (updated per frame, shared across faces in the scene)
-posture_label = "Unknown"
-posture_score = 0.0            # 0.0 = Relaxed, 1.0 = Very Tense
+posture_label     = "Unknown"
+posture_score     = 0.0        # 0.0 = Relaxed, 1.0 = Very Tense
+posture_gap_debug = "..."      # raw gap value shown on screen for calibration
 
 # Per-face posture history for graphing
 face_posture_history = {}      # face_id -> [posture_score over time]
