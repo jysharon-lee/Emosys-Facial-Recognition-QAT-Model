@@ -196,7 +196,7 @@ class CentroidTracker:
         """
         input_centroids = [((x1+x2)/2, (y1+y2)/2) for (x1, y1, x2, y2) in bboxes]
 
-        # No detections — mark all existing as disappeared
+        # No detections = mark all existing as disappeared
         if len(input_centroids) == 0:
             for fid in list(self.disappeared.keys()):
                 self.disappeared[fid] += 1
@@ -204,7 +204,7 @@ class CentroidTracker:
                     self._deregister(fid)
             return []
 
-        # No existing objects — register all
+        # No existing objects = register all
         if len(self.objects) == 0:
             return [self._register(c) for c in input_centroids]
 
@@ -217,7 +217,7 @@ class CentroidTracker:
             for j, ic in enumerate(input_centroids):
                 D[i, j] = np.sqrt((oc[0]-ic[0])**2 + (oc[1]-ic[1])**2)
 
-        assignments = {}      # input_idx -> face_id
+        assignments = {}      
         used_objs = set()
         used_inputs = set()
 
@@ -260,10 +260,6 @@ FACE_COLORS = [
     (0, 255, 0),     # green
 ]
 
-# ------------------------------------------------------------------
-# MediaPipe Pose: Specialist 2 — Body Language Tracking
-# (Using Tasks API for MediaPipe 0.10.x / Python 3.13 compatibility)
-# ------------------------------------------------------------------
 _BaseOptions        = mp_python.BaseOptions
 _PoseLandmarker     = mp_vision.PoseLandmarker
 _PoseLandmarkerOpts = mp_vision.PoseLandmarkerOptions
@@ -272,18 +268,18 @@ _RunningMode        = mp_vision.RunningMode
 pose_model = _PoseLandmarker.create_from_options(
     _PoseLandmarkerOpts(
         base_options=_BaseOptions(model_asset_path="pose_landmarker_lite.task"),
-        running_mode=_RunningMode.IMAGE,   # IMAGE = synchronous, one frame at a time
+        running_mode=_RunningMode.IMAGE,  
         num_poses=1
     )
 )
 
-# Posture state (updated per frame, shared across faces in the scene)
+# Posture state 
 posture_label     = "Unknown"
 posture_score     = 0.0        # 0.0 = Relaxed, 1.0 = Very Tense
-posture_gap_debug = "..."      # raw gap value shown on screen for calibration
+posture_gap_debug = "..."      
 
 # Per-face posture history for graphing
-face_posture_history = {}      # face_id -> [posture_score over time]
+face_posture_history = {}     
 
 
 while True:
@@ -292,7 +288,7 @@ while True:
     if args.image:
         frame = static_frame.copy()
         ret = True
-        time.sleep(0.033)  # simulate ~30fps so it doesn't run infinitely fast
+        time.sleep(0.033)  
     else:
         ret, frame = cap.read()
         
@@ -305,9 +301,7 @@ while True:
 
     frame_count += 1
 
-    # ------------------------------------------------------------------
-    # Specialist 2: MediaPipe Pose — run every 3rd frame to save CPU
-    # ------------------------------------------------------------------
+    # MediaPipe Pose 
     if frame_count % 3 == 0:
         frame_rgb    = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         mp_image     = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
@@ -319,10 +313,6 @@ while True:
             left_shoulder  = lm[11]   # Landmark 11 = Left Shoulder
             right_shoulder = lm[12]   # Landmark 12 = Right Shoulder
 
-            # Shoulder midpoint Y (all values normalised 0.0–1.0)
-            # NOTE: Y=0 is TOP of screen. Shoulders are BELOW nose, so
-            # shoulder_mid_y > nose_y. A smaller gap means shoulders
-            # have risen toward the ears = tension.
             shoulder_mid_y = (left_shoulder.y + right_shoulder.y) / 2.0
             nose_y         = nose.y
 
@@ -607,7 +597,7 @@ while True:
 
             last_log_time = current_time
 
-        # Inference time box (total across all faces)
+        # Inference time box 
         n_faces_now = len(frame_preds)
         infer_text = f"Infer: {total_infer_ms:.1f}ms ({n_faces_now}f)"
         (tw, th_text), _ = cv2.getTextSize(infer_text, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 1)
@@ -616,9 +606,8 @@ while True:
         cv2.putText(frame, infer_text, (box_x, 10 + th_text + 2),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 255), 1, cv2.LINE_AA)
             
-    # -----------------------------
+
     # History UI
-    # -----------------------------
     history_x = 10
     history_y = 60
 
@@ -653,8 +642,8 @@ while True:
         
         raw_output = interpreter.get_tensor(output_details[0]['index'])[0]
         print("Raw output:", raw_output)
-        # Logits look like:  [ 3.2  -1.5   0.8  -2.1  ...]  (arbitrary range)
-        # Probabilities look like: [0.65  0.12  0.08  0.05 ...]  (0–1, sums to ~1)
+        # Logits look like:  [ 3.2  -1.5   0.8  -2.1  ...] 
+        # Probabilities look like: [0.65  0.12  0.08  0.05 ...] 
         print("Sum:", raw_output.sum())  # ~1.0 = already softmax; anything else = raw logits
         
         
@@ -698,9 +687,8 @@ while True:
 if cap is not None:
     cap.release()
 
-# -----------------------------
+
 # Plot emotion confidence graph (per-face)
-# -----------------------------
 emotion_colors = {
     "angry":    "#FF4444",
     "disgust":  "#AA44FF",
@@ -776,9 +764,8 @@ if len(tracked_faces) == 0:
     axes[0][0].set_title("No faces detected", fontsize=13)
     axes[0][1].set_title("No faces detected", fontsize=13)
 
-# ------------------------------------------------------------------
-# Posture Graph Row (last row, spans both columns)
-# ------------------------------------------------------------------
+
+# Posture Graph Row 
 ax_posture_line = axes[n_faces][0]
 ax_posture_bar  = axes[n_faces][1]
 
