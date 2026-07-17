@@ -3,6 +3,9 @@ graph/
 log/
 run_counter/
 
+# Ignore MediaPipe model binary (too large for GitHub)
+pose_landmarker_lite.task
+
 # Ignore Python cache
 __pycache__/
 *.pyc

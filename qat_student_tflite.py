@@ -9,6 +9,8 @@ from collections import deque
 # from picamera2 import Picamera2 # no need pycam anymore since switching to webcam
 import matplotlib.pyplot as plt
 import mediapipe as mp
+from mediapipe.tasks import python as mp_python
+from mediapipe.tasks.python import vision as mp_vision
 
 # Run counter
 run_file = "run_counter/QAT_tflite_run_counter.txt"
@@ -260,14 +262,19 @@ FACE_COLORS = [
 
 # ------------------------------------------------------------------
 # MediaPipe Pose: Specialist 2 — Body Language Tracking
+# (Using Tasks API for MediaPipe 0.10.x / Python 3.13 compatibility)
 # ------------------------------------------------------------------
-mp_pose    = mp.solutions.pose
-mp_drawing = mp.solutions.drawing_utils
-pose_model = mp_pose.Pose(
-    static_image_mode=False,       # False = optimised for continuous video
-    model_complexity=0,            # 0 = Lite (fastest), best for edge devices
-    min_detection_confidence=0.5,
-    min_tracking_confidence=0.5
+_BaseOptions        = mp_python.BaseOptions
+_PoseLandmarker     = mp_vision.PoseLandmarker
+_PoseLandmarkerOpts = mp_vision.PoseLandmarkerOptions
+_RunningMode        = mp_vision.RunningMode
+
+pose_model = _PoseLandmarker.create_from_options(
+    _PoseLandmarkerOpts(
+        base_options=_BaseOptions(model_asset_path="pose_landmarker_lite.task"),
+        running_mode=_RunningMode.IMAGE,   # IMAGE = synchronous, one frame at a time
+        num_poses=1
+    )
 )
 
 # Posture state (updated per frame, shared across faces in the scene)
@@ -302,25 +309,28 @@ while True:
     # ------------------------------------------------------------------
     if frame_count % 3 == 0:
         frame_rgb    = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        pose_results = pose_model.process(frame_rgb)
+        mp_image     = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
+        pose_results = pose_model.detect(mp_image)
 
         if pose_results.pose_landmarks:
-            lm             = pose_results.pose_landmarks.landmark
-            nose           = lm[mp_pose.PoseLandmark.NOSE]
-            left_shoulder  = lm[mp_pose.PoseLandmark.LEFT_SHOULDER]
-            right_shoulder = lm[mp_pose.PoseLandmark.RIGHT_SHOULDER]
+            lm             = pose_results.pose_landmarks[0]  # first person
+            nose           = lm[0]    # Landmark 0  = Nose
+            left_shoulder  = lm[11]   # Landmark 11 = Left Shoulder
+            right_shoulder = lm[12]   # Landmark 12 = Right Shoulder
 
             # Shoulder midpoint Y (all values normalised 0.0–1.0)
+            # NOTE: Y=0 is TOP of screen. Shoulders are BELOW nose, so
+            # shoulder_mid_y > nose_y. A smaller gap means shoulders
+            # have risen toward the ears = tension.
             shoulder_mid_y = (left_shoulder.y + right_shoulder.y) / 2.0
             nose_y         = nose.y
 
-            # Smaller gap = shoulders raised toward ears = Tense
-            gap = nose_y - shoulder_mid_y
+            gap = shoulder_mid_y - nose_y   # positive when relaxed, small when tense
 
-            if gap < 0.15:
+            if gap < 0.10:
                 posture_label = "Tense"
                 posture_score = 1.0
-            elif gap < 0.22:
+            elif gap < 0.18:
                 posture_label = "Slightly Tense"
                 posture_score = 0.5
             else:
