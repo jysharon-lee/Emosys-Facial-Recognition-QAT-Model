@@ -50,7 +50,7 @@ class ClimateReader:
         if self.ser and self.ser.is_open:
             self.ser.close()
 
-    def _update_loop(self):
+    def _update_loop(self): #MOCK DATAAAAAAA
         while self.running:
             if self.ser and self.ser.is_open:
                 try:

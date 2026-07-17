@@ -623,9 +623,7 @@ while True:
                     cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 255), 1, cv2.LINE_AA)
             
 
-    # ---------------------------------------------------------
-    # Specialist 3: Read Environment Data & Draw UI
-    # ---------------------------------------------------------
+    # Read Environment Data & Draw UI
     t_val, h_val, co2_val, voc_val, pm_val = climate_sensor.get_readings()
     env_discomfort = 0.0
 
@@ -653,7 +651,7 @@ while True:
 
         # Draw Environment UI in Top Right
         env_x = w - 180
-        env_y = 40
+        env_y = 65
         cv2.rectangle(frame, (env_x - 10, env_y - 20), (w - 10, env_y + 115), (0, 0, 0), -1)
         cv2.putText(frame, "Environment:", (env_x, env_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
         cv2.putText(frame, f"Temp: {t_val:.1f}C", (env_x, env_y + 18), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200, 200, 200), 1)
