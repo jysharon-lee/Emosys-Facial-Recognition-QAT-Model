@@ -22,13 +22,17 @@ class ClimateReader:
 
     def _connect(self):
         ports = serial.tools.list_ports.comports()
-        if not ports:
-            print("[ClimateSensor] No COM ports found. Running in offline/mock mode.")
+        
+        # Filter out internal Pi ports (ttyAMA*) to ensure we only connect to actual USB sensors
+        valid_ports = [p for p in ports if "ttyAMA" not in p.device]
+        
+        if not valid_ports:
+            print("[ClimateSensor] No external USB COM ports found. Running in offline/mock mode.")
             return
 
-        # Attempt connection to the first port 
+        # Attempt connection to the first valid port 
         try:
-            target_port = ports[0].device
+            target_port = valid_ports[0].device
             print(f"[ClimateSensor] Attempting connection to {target_port}...")
             self.ser = serial.Serial(target_port, self.baudrate, timeout=self.timeout)
             time.sleep(2)  # Wait for serial device to reset

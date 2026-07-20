@@ -6,8 +6,6 @@ import json
 import time
 from collections import deque
 from picamera2 import Picamera2  # Pi Camera support
-import matplotlib
-matplotlib.use('Agg')  # Use non-display backend (safe for SSH and Pi)
 import matplotlib.pyplot as plt
 import mediapipe as mp
 from mediapipe.tasks import python as mp_python
@@ -312,6 +310,9 @@ while True:
     else:
         frame = picam2.capture_array()
         ret = frame is not None
+        if ret:
+            # Picamera2 returns RGB, but OpenCV and the model expect BGR
+            frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
         
     if not ret or frame is None:
         print("Failed to grab frame.")
@@ -693,12 +694,17 @@ while True:
                 0.6,
                 (0, 255, 255), 2)
 
-    # NOTE: cv2.imshow removed — Pi Camera + SSH does not support display windows.
-    # The annotated frame is NOT shown live. Inference, logging, and graphing still work.
-    # To view output, check the saved graph in the /graph folder after pressing Ctrl+C.
+    cv2.imshow("Yunet + MB-V2 model(QAT)", frame)
 
-    # Press Ctrl+C to stop
-    # (cv2.waitKey removed since there is no display window)
+    if cv2.waitKey(1) & 0xFF in [ord('q'), ord('Q')]:
+        print("Ending the program...")
+        print("Output dtype:", output_details[0]['dtype'])
+        print("Output quantization (scale, zp):", output_details[0]['quantization'])
+
+        raw_output = interpreter.get_tensor(output_details[0]['index'])[0]
+        print("Raw output:", raw_output)
+        print("Sum:", raw_output.sum())
+        break
 
 climate_sensor.stop()
 
@@ -920,6 +926,8 @@ plt.tight_layout()
 graph_path = f"graph/qat_kd_tflite_emotion_graph_{time.strftime('%Y%m%d_%H%M')}.png"
 plt.savefig(graph_path, dpi=150)
 print(f"Graph saved to: {graph_path}")
-# plt.show() removed — no display available on Pi when running headless/SSH
+plt.show()
+
+cv2.destroyAllWindows()
 
 pose_model.close()
