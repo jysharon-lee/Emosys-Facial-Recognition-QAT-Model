@@ -3,9 +3,10 @@ import cv2
 import numpy as np
 from tflite_runtime.interpreter import Interpreter
 import json
-import time
 from collections import deque
 from picamera2 import Picamera2  # Pi Camera support
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import mediapipe as mp
 from mediapipe.tasks import python as mp_python
@@ -433,7 +434,7 @@ while True:
                 0.0,   # Fear 
                 1.0,   # Happy 
                 1.0,   # Neutral 
-                0.0,   # Sad 
+                0.5,   # Sad  (Boosted from 0.0 so it is detected more easily)
                 0.0    # Surprise 
             ])
             preds = preds + calibration_biases
@@ -923,11 +924,12 @@ else:
 
 plt.tight_layout()
 
+import os
+os.makedirs("graph", exist_ok=True)
+
 graph_path = f"graph/qat_kd_tflite_emotion_graph_{time.strftime('%Y%m%d_%H%M')}.png"
 plt.savefig(graph_path, dpi=150)
 print(f"Graph saved to: {graph_path}")
-plt.show()
 
 cv2.destroyAllWindows()
-
 pose_model.close()
