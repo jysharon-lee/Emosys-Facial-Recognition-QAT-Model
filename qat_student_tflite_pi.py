@@ -6,9 +6,6 @@ import json
 import time
 from collections import deque
 from picamera2 import Picamera2  # Pi Camera support
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
 import mediapipe as mp
 from mediapipe.tasks import python as mp_python
 from mediapipe.tasks.python import vision as mp_vision
@@ -301,6 +298,23 @@ climate_history = {
     'discomfort': []
 }
 
+
+import csv
+import os
+
+os.makedirs("live", exist_ok=True)
+csv_file_path = "live/live_data.csv"
+# Clear file and write header for the new session
+with open(csv_file_path, "w", newline="") as f:
+    writer = csv.writer(f)
+    writer.writerow([
+        "timestamp", "person_id", "dominant_emotion", 
+        "angry", "disgust", "fear", "happy", "neutral", "sad", "surprise",
+        "posture_label", "posture_score",
+        "temp", "humidity", "co2", "voc", "pm", "discomfort"
+    ])
+
+last_csv_write_time = 0.0
 
 while True:
     
@@ -701,6 +715,46 @@ while True:
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.6,
                 (0, 255, 255), 2)
+                
+    # ---------------------------------------------------------
+    # Streamlit CSV Writing (1x per second)
+    # ---------------------------------------------------------
+    current_time_end = time.time()
+    if current_time_end - last_csv_write_time >= 1.0:
+        last_csv_write_time = current_time_end
+        
+        # Default environment values if none exist yet
+        write_t = t_val if t_val is not None else 0.0
+        write_h = h_val if t_val is not None else 0.0
+        write_c = co2_val if t_val is not None else 0.0
+        write_v = voc_val if t_val is not None else 0.0
+        write_p = pm_val if t_val is not None else 0.0
+        write_d = env_discomfort if t_val is not None else 0.0
+
+        with open(csv_file_path, "a", newline="") as f:
+            writer = csv.writer(f)
+            
+            if not frame_preds:
+                # No faces detected, but still write environment data
+                writer.writerow([
+                    current_time_end, "None", "None", 
+                    0, 0, 0, 0, 0, 0, 0,
+                    posture_label, posture_score,
+                    write_t, write_h, write_c, write_v, write_p, write_d
+                ])
+            else:
+                for fid, preds in frame_preds.items():
+                    # Calculate smoothed predictions for the CSV
+                    avg_p = np.mean(face_buffers[fid], axis=0) if fid in face_buffers else preds
+                    top1_idx = np.argmax(avg_p)
+                    top_emotion = emotion_labels[top1_idx]
+                    
+                    writer.writerow([
+                        current_time_end, f"Person {fid}", top_emotion, 
+                        avg_p[0], avg_p[1], avg_p[2], avg_p[3], avg_p[4], avg_p[5], avg_p[6],
+                        posture_label, posture_score,
+                        write_t, write_h, write_c, write_v, write_p, write_d
+                    ])
 
     cv2.imshow("Yunet + MB-V2 model(QAT)", frame)
 
@@ -756,187 +810,6 @@ if inference_times:
         speed_log.write(f"  P95                    : {p95_infer:.2f} ms\n")
 log_file.close()
 
-
-# Plot emotion confidence graph (per-face)
-emotion_colors = {
-    "angry":    "#FF4444",
-    "disgust":  "#AA44FF",
-    "fear":     "#FF8800",
-    "happy":    "#FFD700",
-    "neutral":  "#44AAFF",
-    "sad":      "#0014F7",
-    "surprise": "#44FF88",
-}
-
-run_datetime = time.strftime("%A, %d %B %Y  |  %H:%M:%S")
-
-# Sort face IDs for consistent ordering
-tracked_faces = sorted(face_emotion_history.keys())
-n_faces = max(len(tracked_faces), 1)
-
-# +2 extra rows for the posture graph and climate graph
-fig, axes = plt.subplots(n_faces + 2, 2, figsize=(18, 6 * (n_faces + 2)), squeeze=False)
-fig.suptitle(f"QAT + KD TFLite Trial #{run_count}  —  {run_datetime}", fontsize=12, color="gray")
-
-for row, fid in enumerate(tracked_faces):
-    ax_line = axes[row][0]
-    ax_bar  = axes[row][1]
-
-    emo_hist = face_emotion_history[fid]
-    t_hist   = face_time_history[fid]
-
-    # --- Line chart ---
-    ax_line.set_title(f"Face #{fid} — Emotion Confidence Over Time", fontsize=13, fontweight="bold")
-    for label, values in emo_hist.items():
-        if len(values) > 0:
-            ax_line.plot(t_hist, values,
-                         label=label,
-                         color=emotion_colors.get(label, "white"),
-                         linewidth=1.5,
-                         alpha=0.85)
-
-    ax_line.set_xlabel("Time (s)")
-    ax_line.set_ylabel("Confidence (%)")
-    ax_line.set_ylim(0, 100)
-    ax_line.legend(loc="upper right", fontsize=8)
-    ax_line.grid(True, alpha=0.3)
-
-    # --- Bar chart ---
-    ax_bar.set_title(f"Face #{fid} — Average Confidence Per Emotion", fontsize=13, fontweight="bold")
-
-    avg_per_emotion = {
-        label: np.mean(values) if len(values) > 0 else 0
-        for label, values in emo_hist.items()
-    }
-
-    sorted_emotions = sorted(avg_per_emotion.items(), key=lambda x: x[1], reverse=True)
-    labels_list = [e[0] for e in sorted_emotions]
-    values_list = [e[1] for e in sorted_emotions]
-    colors_list = [emotion_colors.get(l, "gray") for l in labels_list]
-
-    bars = ax_bar.bar(labels_list, values_list, color=colors_list, edgecolor="white", linewidth=0.5)
-
-    for bar, val in zip(bars, values_list):
-        ax_bar.text(bar.get_x() + bar.get_width() / 2,
-                    bar.get_height() + 0.5,
-                    f"{val:.1f}%",
-                    ha="center", va="bottom",
-                    fontsize=9, fontweight="bold", color="black")
-
-    ax_bar.set_xlabel("Emotion")
-    ax_bar.set_ylabel("Average Confidence (%)")
-    ax_bar.set_ylim(0, 100)
-    ax_bar.grid(True, alpha=0.3, axis="y")
-
-# Handle case where no faces were detected at all
-if len(tracked_faces) == 0:
-    axes[0][0].set_title("No faces detected", fontsize=13)
-    axes[0][1].set_title("No faces detected", fontsize=13)
-
-
-# Posture Graph Row 
-ax_posture_line = axes[n_faces][0]
-ax_posture_bar  = axes[n_faces][1]
-
-posture_color_map = {0.0: "#44FF88", 0.5: "#FFD700", 1.0: "#FF4444"}
-
-for fid in tracked_faces:
-    p_hist = face_posture_history.get(fid, [])
-    if len(p_hist) > 0:
-        t_hist = face_time_history[fid][:len(p_hist)]
-        color  = FACE_COLORS[fid % len(FACE_COLORS)]
-        # Convert BGR tuple to hex for matplotlib
-        hex_color = "#{:02x}{:02x}{:02x}".format(color[2], color[1], color[0])
-        ax_posture_line.plot(
-            t_hist, p_hist,
-            label=f"Face #{fid} Posture",
-            color=hex_color,
-            linewidth=1.5,
-            alpha=0.85
-        )
-
-        # Bar: average posture score
-        avg_posture = np.mean(p_hist)
-        ax_posture_bar.bar(
-            f"Face #{fid}",
-            avg_posture * 100,
-            color=hex_color,
-            edgecolor="white",
-            linewidth=0.5
-        )
-        ax_posture_bar.text(
-            f"Face #{fid}",
-            avg_posture * 100 + 1,
-            f"{avg_posture * 100:.1f}%",
-            ha="center", va="bottom",
-            fontsize=9, fontweight="bold"
-        )
-
-ax_posture_line.set_title("Body Language — Posture Tension Over Time", fontsize=13, fontweight="bold")
-ax_posture_line.set_xlabel("Time (s)")
-ax_posture_line.set_ylabel("Tension Score (0=Relaxed, 1=Tense)")
-ax_posture_line.set_ylim(-0.1, 1.2)
-ax_posture_line.axhline(y=0.5, color="yellow", linestyle="--", alpha=0.5, label="Slight Tension Threshold")
-ax_posture_line.axhline(y=1.0, color="red",    linestyle="--", alpha=0.5, label="High Tension Threshold")
-ax_posture_line.legend(loc="upper right", fontsize=8)
-ax_posture_line.grid(True, alpha=0.3)
-
-ax_posture_bar.set_title("Body Language — Average Posture Tension Per Person", fontsize=13, fontweight="bold")
-ax_posture_bar.set_xlabel("Person")
-ax_posture_bar.set_ylabel("Average Tension (%)")
-ax_posture_bar.set_ylim(0, 110)
-ax_posture_bar.grid(True, alpha=0.3, axis="y")
-
-# ------------------------------------------------------------------
-# Climate Graph Row (very last row)
-# ------------------------------------------------------------------
-ax_climate_env = axes[n_faces + 1][0]
-ax_climate_disc = axes[n_faces + 1][1]
-
-if len(climate_history['time']) > 0:
-    t_hist = climate_history['time']
-    
-    # Left subplot: Environment metrics
-    ax_climate_env.plot(t_hist, climate_history['co2'], label="CO2 (ppm)", color="#44AAFF", alpha=0.8)
-    ax_climate_env.plot(t_hist, climate_history['voc'], label="VOC", color="#AA44FF", alpha=0.8)
-    ax_climate_env.plot(t_hist, climate_history['pm'], label="PM", color="#FF8800", alpha=0.8)
-    
-    ax_climate_env2 = ax_climate_env.twinx()
-    ax_climate_env2.plot(t_hist, climate_history['temp'], label="Temp (C)", color="#FF4444", linestyle="--")
-    ax_climate_env2.plot(t_hist, climate_history['hum'], label="Humidity (%)", color="#FFD700", linestyle="--")
-    
-    ax_climate_env.set_title("Environment Sensor Data", fontsize=13, fontweight="bold")
-    ax_climate_env.set_xlabel("Time (s)")
-    ax_climate_env.set_ylabel("CO2 / VOC / PM")
-    ax_climate_env2.set_ylabel("Temp / Humidity")
-    
-    # Combine legends
-    lines_1, labels_1 = ax_climate_env.get_legend_handles_labels()
-    lines_2, labels_2 = ax_climate_env2.get_legend_handles_labels()
-    ax_climate_env.legend(lines_1 + lines_2, labels_1 + labels_2, loc="upper left", fontsize=8)
-    
-    # Right subplot: Discomfort score
-    ax_climate_disc.plot(t_hist, climate_history['discomfort'], label="Discomfort Score", color="#FF0000", linewidth=2)
-    ax_climate_disc.axhline(y=50, color="orange", linestyle="--", alpha=0.5, label="Moderate Discomfort")
-    ax_climate_disc.axhline(y=80, color="red", linestyle="--", alpha=0.5, label="High Discomfort")
-    ax_climate_disc.set_title("Environmental Discomfort Level", fontsize=13, fontweight="bold")
-    ax_climate_disc.set_xlabel("Time (s)")
-    ax_climate_disc.set_ylabel("Discomfort (%)")
-    ax_climate_disc.set_ylim(-5, 105)
-    ax_climate_disc.legend(loc="upper left", fontsize=8)
-    ax_climate_disc.grid(True, alpha=0.3)
-else:
-    ax_climate_env.set_title("Environment Data Not Available", fontsize=13)
-    ax_climate_disc.set_title("Environment Data Not Available", fontsize=13)
-
-plt.tight_layout()
-
-import os
-os.makedirs("graph", exist_ok=True)
-
-graph_path = f"graph/qat_kd_tflite_emotion_graph_{time.strftime('%Y%m%d_%H%M')}.png"
-plt.savefig(graph_path, dpi=150)
-print(f"Graph saved to: {graph_path}")
-
 cv2.destroyAllWindows()
 pose_model.close()
+print("Session complete. All data saved to live/live_data.csv")
