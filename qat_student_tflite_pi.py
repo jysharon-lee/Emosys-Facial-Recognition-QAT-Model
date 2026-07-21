@@ -112,7 +112,7 @@ else:
     print("Opening Pi Camera...")
     picam2 = Picamera2()
     picam2.configure(picam2.create_video_configuration(
-        main={"size": (640, 480), "format": "BGR888"}
+        main={"size": (1280, 720), "format": "BGR888"}
     ))
     picam2.start()
     time.sleep(1)  # Let camera warm up
@@ -176,7 +176,7 @@ def softmax(x):
 # Centroid Tracker: assigns persistent IDs to faces across frames
 # -----------------------------------------------------------------
 class CentroidTracker:
-    def __init__(self, max_disappeared=50):
+    def __init__(self, max_disappeared=100):
         self.next_id = 0
         self.objects = {}        # id -> (cx, cy)
         self.disappeared = {}    # id -> frames disappeared
@@ -232,7 +232,7 @@ class CentroidTracker:
             col = flat_idx % len(input_centroids)
             if row in used_objs or col in used_inputs:
                 continue
-            if D[row, col] > 150:      # max pixel distance threshold
+            if D[row, col] > 400:      # max pixel distance threshold
                 break
             assignments[col] = obj_ids[row]
             self.objects[obj_ids[row]] = input_centroids[col]
@@ -315,6 +315,12 @@ while True:
         if ret:
             # Picamera2 returns RGB, but OpenCV and the model expect BGR
             frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+            
+            # Crop the center 640x480 to act as a "Digital Zoom". 
+            # This makes the face bigger and removes the fish-eye distortion at the edges!
+            # frame is currently 1280x720. 
+            # y_start = (720 - 480)//2 = 120, x_start = (1280 - 640)//2 = 320
+            frame = frame[120:600, 320:960]
         
     if not ret or frame is None:
         print("Failed to grab frame.")
@@ -343,10 +349,10 @@ while True:
             gap = shoulder_mid_y - nose_y   # positive when relaxed, small when tense
             posture_gap_debug = f"{gap:.3f}"  # store for on-screen debug display
 
-            if gap < 0.10:
+            if gap < 0.20:
                 posture_label = "Tense"
                 posture_score = 1.0
-            elif gap < 0.18:
+            elif gap < 0.35:
                 posture_label = "Slightly Tense"
                 posture_score = 0.5
             else:
