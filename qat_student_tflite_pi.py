@@ -283,7 +283,7 @@ posture_gap_debug = "..."
 face_posture_history = {}      # face_id -> [posture_score over time]
 
 # ------------------------------------------------------------------
-# Specialist 3: Environmental Sensing (ClimateReader)
+# Environmental Sensing (ClimateReader)
 # ------------------------------------------------------------------
 climate_sensor = ClimateReader()
 climate_sensor.start()

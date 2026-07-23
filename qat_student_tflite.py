@@ -640,7 +640,7 @@ while True:
         env_discomfort = min(100.0, co2_penalty + voc_penalty + pm_penalty)
 
         # Log history for graph
-        if frame_count % 10 == 0:  # Save every 10 frames to avoid huge arrays
+        if frame_count % 10 == 0:  
             climate_history['time'].append(time.time() - start)
             climate_history['temp'].append(t_val)
             climate_history['hum'].append(h_val)
