@@ -361,7 +361,7 @@ while True:
             nose_y         = nose.y
 
             gap = shoulder_mid_y - nose_y   # positive when relaxed, small when tense
-            posture_gap_debug = f"{gap:.3f}"  # store for on-screen debug display
+            posture_gap_debug = f"{gap:.3f}"  
 
             if gap < 0.20:
                 posture_label = "Tense"
