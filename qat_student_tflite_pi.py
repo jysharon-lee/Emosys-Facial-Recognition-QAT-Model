@@ -1,4 +1,6 @@
 import argparse
+import csv
+import os
 import cv2
 import numpy as np
 from tflite_runtime.interpreter import Interpreter
@@ -307,9 +309,6 @@ climate_history = {
     'discomfort': []
 }
 
-
-import csv
-import os
 
 os.makedirs("live", exist_ok=True)
 csv_file_path = "live/live_data.csv"
