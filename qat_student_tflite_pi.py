@@ -125,6 +125,15 @@ cached_faces = None
 start = time.time()
 fps_buffer = deque(maxlen=30)
 
+# -----------------------------
+# Image Capture Setup
+# -----------------------------
+capture_folder = os.path.join("Frames", f"Run_{run_count}")
+os.makedirs(capture_folder, exist_ok=True)
+capture_counter  = 0          # sequential number, resets each run
+last_capture_time = time.time()  # track 30-second interval
+CAPTURE_INTERVAL  = 30        # seconds between captures
+
 # smoothing (per-face)
 face_buffers        = {}   # face_id -> deque of predictions
 last_face_seen      = time.time()
@@ -757,6 +766,18 @@ while True:
                     ])
 
     cv2.imshow("Yunet + MB-V2 model(QAT)", frame)
+
+    # ---------------------------------------------------------
+    # Periodic Frame Capture (every 30 seconds, face required)
+    # ---------------------------------------------------------
+    current_time_capture = time.time()
+    if (current_time_capture - last_capture_time >= CAPTURE_INTERVAL) and frame_preds:
+        capture_counter += 1
+        filename    = f"frame_{capture_counter:03d}.jpg"
+        filepath    = os.path.join(capture_folder, filename)
+        cv2.imwrite(filepath, frame)
+        print(f"Frame saved: {filepath}")
+        last_capture_time = current_time_capture
 
     if cv2.waitKey(1) & 0xFF in [ord('q'), ord('Q')]:
         print("Ending the program...")
