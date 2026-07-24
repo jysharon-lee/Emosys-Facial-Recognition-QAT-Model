@@ -12,6 +12,7 @@ import mediapipe as mp
 from mediapipe.tasks import python as mp_python
 from mediapipe.tasks.python import vision as mp_vision
 from climate_sensor import ClimateReader
+from push_module import push_result
 
 # Run counter
 run_file = "run_counter/QAT_tflite_run_counter.txt"
@@ -776,6 +777,23 @@ while True:
         filepath    = os.path.join(capture_folder, filename)
         cv2.imwrite(filepath, frame)
         print(f"Frame saved: {filepath}")
+        
+        # Prepare data for dashboard push
+        # 1. Grab the dominant emotion from the first detected face
+        first_fid = list(frame_preds.keys())[0]
+        preds = frame_preds[first_fid]
+        avg_p = np.mean(face_buffers[first_fid], axis=0) if first_fid in face_buffers else preds
+        top1_idx = np.argmax(avg_p)
+        detected_emotion = emotion_labels[top1_idx]
+        confidence_score = float(avg_p[top1_idx])
+        
+        # 2. Encode the annotated frame to JPEG bytes
+        _, buffer = cv2.imencode('.jpg', frame)
+        frame_jpeg_bytes = buffer.tobytes()
+        
+        # 3. Send it to the dashboard
+        push_result(detected_emotion, confidence_score, frame_jpeg_bytes)
+
         last_capture_time = current_time_capture
 
     if cv2.waitKey(1) & 0xFF in [ord('q'), ord('Q')]:
