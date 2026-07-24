@@ -13,6 +13,7 @@ from mediapipe.tasks import python as mp_python
 from mediapipe.tasks.python import vision as mp_vision
 from climate_sensor import ClimateReader
 from push_module import push_result
+from influxdb_handler import InfluxDBHandler
 
 # Run counter
 run_file = "run_counter/QAT_tflite_run_counter.txt"
@@ -135,6 +136,11 @@ os.makedirs(capture_folder, exist_ok=True)
 capture_counter  = 0          
 last_capture_time = time.time() 
 CAPTURE_INTERVAL  = 30       
+
+# -----------------------------
+# InfluxDB Setup
+# -----------------------------
+db = InfluxDBHandler()
 
 # smoothing (per-face)
 face_buffers        = {}  
@@ -487,6 +493,9 @@ while True:
             top1_idx    = top_indices[0]
             top1_conf   = avg_preds[top1_idx]
             top1_label  = emotion_labels[top1_idx]
+
+            # InfluxDB Write (rate limited to once every 5s inside the handler)
+            db.write_prediction(top1_label, top1_conf)
 
             # -----------------------------
             # Stress calculation
