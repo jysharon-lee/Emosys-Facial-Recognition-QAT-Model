@@ -32,9 +32,9 @@ print(f"Starting Run #{run_count}")
 # -----------------------------
 yunet = cv2.FaceDetectorYN.create(
     model="face_detection_yunet_2023mar.onnx",
-    #model="yunetn_320_qdq_int8.onnx",    # can be use but the detector disappear if got close to the camera. Cant use high (0.5 - 0.7)
-    config="",                            # threshold because the model will break in the webcam {not sure for the raspberry pi}
-    input_size=(320, 320),                # plus theres the decrease of accuracy after the conversion. 
+    #model="yunetn_320_qdq_int8.onnx",   
+    config="",                            
+    input_size=(320, 320),                
     score_threshold=0.9,
     nms_threshold=0.3,
     top_k=5000
@@ -63,7 +63,6 @@ interpreter.allocate_tensors()
 input_details = interpreter.get_input_details()
 output_details = interpreter.get_output_details()
 
-# Grab expected input shape from model (e.g. [1, 96, 96, 3])
 input_shape = input_details[0]['shape']
 input_h, input_w = input_shape[1], input_shape[2]
 print(f"TFLite model loaded! Input size: {input_w}x{input_h}")
@@ -115,9 +114,9 @@ else:
         main={"size": (1280, 720), "format": "BGR888"}
     ))
     picam2.start()
-    time.sleep(1)  # Let camera warm up
+    time.sleep(1)  
     print("Pi Camera started")
-    cap = None  # Not used, but kept for compatibility with cleanup code
+    cap = None 
 
 # ----------------------------
 # Config
@@ -133,12 +132,12 @@ fps_buffer = deque(maxlen=30)
 # -----------------------------
 capture_folder = os.path.join("Frames", f"Run_{run_count}")
 os.makedirs(capture_folder, exist_ok=True)
-capture_counter  = 0          # sequential number, resets each run
-last_capture_time = time.time()  # track 30-second interval
-CAPTURE_INTERVAL  = 30        # seconds between captures
+capture_counter  = 0          
+last_capture_time = time.time() 
+CAPTURE_INTERVAL  = 30       
 
 # smoothing (per-face)
-face_buffers        = {}   # face_id -> deque of predictions
+face_buffers        = {}  
 last_face_seen      = time.time()
 FACE_TIMEOUT        = 2.0
 
@@ -234,7 +233,7 @@ class CentroidTracker:
         used_objs = set()
         used_inputs = set()
 
-        # Greedy nearest-first matching
+        
         flat_order = np.argsort(D, axis=None)
         for flat_idx in flat_order:
             row = flat_idx // len(input_centroids)
@@ -292,7 +291,7 @@ posture_score     = 0.0        # 0.0 = Relaxed, 1.0 = Very Tense
 posture_gap_debug = "..."      
 
 # Per-face posture history for graphing
-face_posture_history = {}      # face_id -> [posture_score over time]
+face_posture_history = {}     
 
 # ------------------------------------------------------------------
 # Environmental Sensing (ClimateReader)
@@ -338,11 +337,6 @@ while True:
         if ret:
             # Picamera2 returns RGB, but OpenCV and the model expect BGR
             frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-            
-            # Crop the center 640x480 to act as a "Digital Zoom". 
-            # This makes the face bigger and removes the fish-eye distortion at the edges!
-            # frame is currently 1280x720. 
-            # y_start = (720 - 480)//2 = 120, x_start = (1280 - 640)//2 = 320
             frame = frame[120:600, 320:960]
         
     if not ret or frame is None:
@@ -400,7 +394,7 @@ while True:
     else:
         last_face_seen = time.time()
 
-    frame_preds = {}       # face_id -> preds (this frame)
+    frame_preds = {}      
     total_infer_ms = 0
 
     if faces is not None:
@@ -471,13 +465,13 @@ while True:
             preds = softmax(preds)
             frame_preds[fid] = preds
 
-            # --- Per-face smoothing ---
+            # Per-face smoothing 
             if fid not in face_buffers:
                 face_buffers[fid] = deque(maxlen=30)
             face_buffers[fid].append(preds)
             avg_preds = np.mean(face_buffers[fid], axis=0)
 
-            # --- Per-face emotion history for graph ---
+            # Per-face emotion history for graph
             if fid not in face_emotion_history:
                 face_emotion_history[fid] = {label: [] for label in emotion_labels.values()}
                 face_time_history[fid] = []
@@ -608,7 +602,7 @@ while True:
                         stress_color, 1)
             """
     else:
-        tracker.update([])   # keep tracker ticking when no faces
+        tracker.update([])   # keep tracker ticking when no face
 
     # ---------------------------------------------------------
     # Per-face logging (outside face loop)
