@@ -1,6 +1,7 @@
 # EmoSys - Real-Time Edge AI Emotion & Environment Analytics
 ### Built for Raspberry Pi 5 with Pi Camera Module 3
 #### Project Built Throughout Internship at SMD Semiconductor
+#### Contributor: Aina Qistina (Product Development)
 
 EmoSys is a highly optimized Edge AI system that analyzes **human emotions**, **body posture**, and **environmental climate** in real-time. It was specifically engineered for deployment on constrained edge devices like the Raspberry Pi, utilizing a custom-trained compressed MobileNetV2 architecture and a dedicated live Streamlit dashboard.
 
