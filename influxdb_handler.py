@@ -32,7 +32,7 @@ class InfluxDBHandler:
 
         point = (
             Point("FER Prediction")
-            .tag("device", "pi1")
+            .tag("device", "pi2")
             .field("emotion", emotion)
             .field("confidence", float(confidence))
         )
