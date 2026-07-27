@@ -6,7 +6,7 @@ class InfluxDBHandler:
     
     def __init__(self):
         self.url    = "http://localhost:8086"
-        self.token  = "fADItMC71Ir23UcSNkG8EOJWKoWdX1Mx4j5NqZgxKSyPevQ-2UuGTWUq4ydQzzoxwTu6to_XXS5FQceZeeERTQ=="
+        self.token  = "v1-sLO515RunAvsvTZZ8PLPP13L05Yvp2CyT8OeMfd1rqPtywjqRHKq6EjQQa6N4EYuSN6XfxLYwwsiCzxgKKw=="
         self.org    = "EmoSys"
         self.bucket = "emotionDB"
 
