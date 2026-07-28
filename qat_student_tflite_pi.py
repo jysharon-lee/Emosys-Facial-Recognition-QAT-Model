@@ -495,7 +495,7 @@ while True:
             top1_label  = emotion_labels[top1_idx]
 
             # InfluxDB Write (rate limited to once every 5s inside the handler)
-            db.write_prediction(top1_label, top1_conf)
+            db.write_prediction(fid, top1_label, top1_conf)
 
             # -----------------------------
             # Stress calculation
