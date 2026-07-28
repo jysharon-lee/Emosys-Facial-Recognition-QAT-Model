@@ -8,7 +8,7 @@ def push_result (emotion, confidence, frame_jpeg_bytes):
     data  = {
         'emotion':emotion,
         'confidence':confidence,
-        'deviceId':'pi4_emotion_cam',
+        'deviceId':'pi2',
         'modelVersion':'v1'
     }
 
