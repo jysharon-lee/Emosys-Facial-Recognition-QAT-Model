@@ -305,10 +305,12 @@ gesture_label  = "Neutral"     # current confirmed gesture label
 gesture_buffer = deque(maxlen=15)  # ~1.5s of smoothing at every-3rd-frame rate
 
 # Thresholds (normalized 0.0-1.0 landmark coordinates)
-GEST_NEAR      = 0.18   # wrist near face region
-GEST_MOUTH     = 0.12   # tighter — mouth is a smaller target
-GEST_EAR       = 0.15   # ear/temple region
-GEST_CHIN_OFF  = 0.08   # vertical offset to distinguish chin vs nose level
+GEST_NEAR      = 0.35   # wrist near face region (increased for close-up cameras)
+GEST_MOUTH     = 0.20   # tighter — mouth is a smaller target
+GEST_EAR       = 0.25   # ear/temple region
+GEST_CHIN_OFF  = 0.10   # vertical offset to distinguish chin vs nose level
+
+gesture_debug_dist = "0.00"
 
 # Per-face posture history for graphing
 face_posture_history = {}     
@@ -377,6 +379,11 @@ while True:
 
         if pose_results.pose_landmarks:
             lm             = pose_results.pose_landmarks[0]  # first person
+
+            # Draw pose landmarks for visual debugging
+            for lm_pt in lm:
+                cv2.circle(frame, (int(lm_pt.x * w), int(lm_pt.y * h)), 2, (0, 255, 0), -1)
+
             nose           = lm[0]    # Landmark 0  = Nose
             left_shoulder  = lm[11]   # Landmark 11 = Left Shoulder
             right_shoulder = lm[12]   # Landmark 12 = Right Shoulder
@@ -410,6 +417,8 @@ while True:
             d_right = dist(right_wrist, nose)
             active_wrist = left_wrist if d_left <= d_right else right_wrist
             d_near       = min(d_left, d_right)
+            
+            gesture_debug_dist = f"{d_near:.2f}"
 
             # Distance from active wrist to bilateral landmarks
             d_mouth = min(dist(active_wrist, mouth_left),
@@ -623,8 +632,8 @@ while True:
             # Posture label + raw gap debug value below face box
             draw_label(frame, f"Posture: {posture_label}  [gap={posture_gap_debug}]", x1, y2 + 38, 0.5, (255, 255, 0))
 
-            # Gesture label
-            draw_label(frame, f"Gesture: {gesture_label}", x1, y2 + 58, 0.5, (0, 200, 255))
+            # Gesture label + raw distance debug
+            draw_label(frame, f"Gesture: {gesture_label} [dist={gesture_debug_dist}]", x1, y2 + 58, 0.5, (0, 200, 255))
 
             # Draw emotion labels per face
             if top1_conf < CONF_THRESHOLD:
