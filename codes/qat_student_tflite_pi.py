@@ -464,7 +464,7 @@ while True:
                 0.0,   # Fear 
                 1.0,   # Happy 
                 1.0,   # Neutral 
-                0.5,   # Sad  (Boosted from 0.0 so it is detected more easily)
+                0.5,   # Sad  
                 0.0    # Surprise 
             ])
             preds = preds + calibration_biases
@@ -495,7 +495,7 @@ while True:
             top1_label  = emotion_labels[top1_idx]
 
             # InfluxDB Write (rate limited to once every 5s inside the handler)
-            db.write_prediction(fid, top1_label, top1_conf)
+            db.write_prediction(fid, top1_label, top1_conf, posture_score, posture_label)
 
             # -----------------------------
             # Stress calculation
