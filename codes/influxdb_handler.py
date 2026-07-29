@@ -24,7 +24,7 @@ class InfluxDBHandler:
         self.last_saved_per_face = {}
         self.interval = 5 # seconds
 
-    def write_prediction(self, face_id, emotion, confidence, posture_score, posture):
+    def write_prediction(self, face_id, emotion, confidence, posture_score, posture, gesture):
 
         current_time = time.time()
         
@@ -42,6 +42,7 @@ class InfluxDBHandler:
             .field("confidence", float(confidence))
             .field("posture_score", float(posture_score))
             .field("posture", posture)
+            .field("gesture", gesture)
         )
 
         try:
@@ -52,7 +53,7 @@ class InfluxDBHandler:
             )
             # Update the cooldown timer for this specific face ID
             self.last_saved_per_face[face_id] = current_time
-            print(f"InfluxDB saved Face #{face_id}: {emotion} ({confidence:.2f}) | Posture: {posture} ({posture_score:.2f})")
+            print(f"InfluxDB saved Face #{face_id}: {emotion} ({confidence:.2f}) | Posture: {posture} ({posture_score:.2f}) | Gesture: {gesture}")
         except Exception as e:
             print(f"InfluxDB save failed for Face #{face_id}: {e}")
 

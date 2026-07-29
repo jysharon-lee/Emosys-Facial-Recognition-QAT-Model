@@ -6,7 +6,7 @@ import numpy as np
 from tflite_runtime.interpreter import Interpreter
 import json
 import time
-from collections import deque
+from collections import deque, Counter
 from picamera2 import Picamera2  # Pi Camera support
 import mediapipe as mp
 from mediapipe.tasks import python as mp_python
@@ -186,6 +186,10 @@ def softmax(x):
     e_x = np.exp(x - np.max(x))
     return e_x / e_x.sum()
 
+def dist(a, b):
+    """Euclidean distance between two normalized MediaPipe landmarks."""
+    return ((a.x - b.x) ** 2 + (a.y - b.y) ** 2) ** 0.5
+
 # ------------------------------------------------------------------
 # Centroid Tracker: assigns persistent IDs to faces across frames
 # -----------------------------------------------------------------
@@ -296,6 +300,16 @@ posture_label     = "Unknown"
 posture_score     = 0.0        # 0.0 = Relaxed, 1.0 = Very Tense
 posture_gap_debug = "..."      
 
+# Gesture state
+gesture_label  = "Neutral"     # current confirmed gesture label
+gesture_buffer = deque(maxlen=15)  # ~1.5s of smoothing at every-3rd-frame rate
+
+# Thresholds (normalized 0.0-1.0 landmark coordinates)
+GEST_NEAR      = 0.18   # wrist near face region
+GEST_MOUTH     = 0.12   # tighter — mouth is a smaller target
+GEST_EAR       = 0.15   # ear/temple region
+GEST_CHIN_OFF  = 0.08   # vertical offset to distinguish chin vs nose level
+
 # Per-face posture history for graphing
 face_posture_history = {}     
 
@@ -325,6 +339,7 @@ with open(csv_file_path, "w", newline="") as f:
         "timestamp", "person_id", "dominant_emotion", 
         "angry", "disgust", "fear", "happy", "neutral", "sad", "surprise",
         "posture_label", "posture_score",
+        "gesture",
         "temp", "humidity", "co2", "voc", "pm", "discomfort"
     ])
 
@@ -381,10 +396,54 @@ while True:
             else:
                 posture_label = "Relaxed"
                 posture_score = 0.0
+
+            # ----------------------------------------------------------
+            # Gesture Detection (rule-based landmark proximity)
+            # ----------------------------------------------------------
+            left_wrist  = lm[15]   # Landmark 15 = Left Wrist
+            right_wrist = lm[16]   # Landmark 16 = Right Wrist
+            mouth_left  = lm[9]    # Landmark 9  = Mouth Left Corner
+            mouth_right = lm[10]   # Landmark 10 = Mouth Right Corner
+            ear_left    = lm[7]    # Landmark 7  = Left Ear
+            ear_right   = lm[8]    # Landmark 8  = Right Ear
+
+            # Distance from each wrist to nose — pick the closer (active) wrist
+            d_left  = dist(left_wrist,  nose)
+            d_right = dist(right_wrist, nose)
+            active_wrist = left_wrist if d_left <= d_right else right_wrist
+            d_near       = min(d_left, d_right)
+
+            # Distance from active wrist to bilateral landmarks
+            d_mouth = min(dist(active_wrist, mouth_left),
+                          dist(active_wrist, mouth_right))
+            d_ear   = min(dist(active_wrist, ear_left),
+                          dist(active_wrist, ear_right))
+
+            # Apply spatial rules — order matters (most specific first)
+            if d_near < GEST_NEAR:
+                if active_wrist.y > nose.y + GEST_CHIN_OFF:
+                    raw_gesture = "Chin Rest"
+                elif active_wrist.y < nose.y - GEST_CHIN_OFF:
+                    raw_gesture = "Forehead Rub"
+                else:
+                    raw_gesture = "Face Touch"
+            elif d_mouth < GEST_MOUTH:
+                raw_gesture = "Mouth Cover"
+            elif d_ear < GEST_EAR:
+                raw_gesture = "Head Scratch"
+            else:
+                raw_gesture = "Neutral"
+
+            # Temporal smoothing — only confirm if majority of recent frames agree
+            gesture_buffer.append(raw_gesture)
+            gesture_label = Counter(gesture_buffer).most_common(1)[0][0]
+
         else:
             posture_label     = "Not Detected"
             posture_score     = 0.0
             posture_gap_debug = "N/A"
+            gesture_buffer.append("Neutral")
+            gesture_label = "Neutral"
 
     # detect faces every 2 frames
     if frame_count % 2 == 0:
@@ -495,7 +554,7 @@ while True:
             top1_label  = emotion_labels[top1_idx]
 
             # InfluxDB Write (rate limited to once every 5s inside the handler)
-            db.write_prediction(fid, top1_label, top1_conf, posture_score, posture_label)
+            db.write_prediction(fid, top1_label, top1_conf, posture_score, posture_label, gesture_label)
 
             # -----------------------------
             # Stress calculation
@@ -565,6 +624,9 @@ while True:
 
             # Posture label + raw gap debug value below face box
             draw_label(frame, f"Posture: {posture_label}  [gap={posture_gap_debug}]", x1, y2 + 38, 0.5, (255, 255, 0))
+
+            # Gesture label
+            draw_label(frame, f"Gesture: {gesture_label}", x1, y2 + 58, 0.5, (0, 200, 255))
 
             # Draw emotion labels per face
             if top1_conf < CONF_THRESHOLD:
@@ -752,6 +814,7 @@ while True:
                     current_time_end, "None", "None", 
                     0, 0, 0, 0, 0, 0, 0,
                     posture_label, posture_score,
+                    gesture_label,
                     write_t, write_h, write_c, write_v, write_p, write_d
                 ])
             else:
@@ -765,6 +828,7 @@ while True:
                         current_time_end, f"Person {fid}", top_emotion, 
                         avg_p[0], avg_p[1], avg_p[2], avg_p[3], avg_p[4], avg_p[5], avg_p[6],
                         posture_label, posture_score,
+                        gesture_label,
                         write_t, write_h, write_c, write_v, write_p, write_d
                     ])
 
@@ -795,7 +859,7 @@ while True:
         frame_jpeg_bytes = buffer.tobytes()
         
         # 3. Send it to the dashboard
-        push_result(detected_emotion, confidence_score, frame_jpeg_bytes, posture_score, posture_label)
+        push_result(detected_emotion, confidence_score, frame_jpeg_bytes, posture_score, posture_label, gesture_label)
 
         last_capture_time = current_time_capture
 
