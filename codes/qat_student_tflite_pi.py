@@ -397,9 +397,7 @@ while True:
                 posture_label = "Relaxed"
                 posture_score = 0.0
 
-            # ----------------------------------------------------------
-            # Gesture Detection (rule-based landmark proximity)
-            # ----------------------------------------------------------
+            # Gesture Detection 
             left_wrist  = lm[15]   # Landmark 15 = Left Wrist
             right_wrist = lm[16]   # Landmark 16 = Right Wrist
             mouth_left  = lm[9]    # Landmark 9  = Mouth Left Corner
@@ -407,7 +405,7 @@ while True:
             ear_left    = lm[7]    # Landmark 7  = Left Ear
             ear_right   = lm[8]    # Landmark 8  = Right Ear
 
-            # Distance from each wrist to nose — pick the closer (active) wrist
+            # Distance from each wrist to nose, pick the closer (active) wrist
             d_left  = dist(left_wrist,  nose)
             d_right = dist(right_wrist, nose)
             active_wrist = left_wrist if d_left <= d_right else right_wrist
@@ -419,7 +417,7 @@ while True:
             d_ear   = min(dist(active_wrist, ear_left),
                           dist(active_wrist, ear_right))
 
-            # Apply spatial rules — order matters (most specific first)
+            # Apply spatial rules 
             if d_near < GEST_NEAR:
                 if active_wrist.y > nose.y + GEST_CHIN_OFF:
                     raw_gesture = "Chin Rest"
@@ -434,7 +432,7 @@ while True:
             else:
                 raw_gesture = "Neutral"
 
-            # Temporal smoothing — only confirm if majority of recent frames agree
+            # Temporal smoothing 
             gesture_buffer.append(raw_gesture)
             gesture_label = Counter(gesture_buffer).most_common(1)[0][0]
 
