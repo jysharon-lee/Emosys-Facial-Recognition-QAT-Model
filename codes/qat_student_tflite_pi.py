@@ -795,7 +795,7 @@ while True:
         frame_jpeg_bytes = buffer.tobytes()
         
         # 3. Send it to the dashboard
-        push_result(detected_emotion, confidence_score, frame_jpeg_bytes)
+        push_result(detected_emotion, confidence_score, frame_jpeg_bytes, posture_score, posture_label)
 
         last_capture_time = current_time_capture
 
