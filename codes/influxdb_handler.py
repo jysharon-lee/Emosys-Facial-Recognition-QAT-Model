@@ -5,8 +5,8 @@ import time
 class InfluxDBHandler:
     
     def __init__(self):
-        self.url    = "http://10.0.30.5:8086"
-        self.token  = "v1-sLO515RunAvsvTZZ8PLPP13L05Yvp2CyT8OeMfd1rqPtywjqRHKq6EjQQa6N4EYuSN6XfxLYwwsiCzxgKKw=="
+        self.url    = "http://10.0.20.159"
+        self.token  = "P94COCY0PTnw_oA0Dvtlv9y2ZWirIteioLJpmlkOm_PXPcX-LDO3V-Axe6mJGqIWy47uX06lP8fJKNEPOqu4cA=="
         self.org    = "EmoSys"
         self.bucket = "emotionDB"
 
