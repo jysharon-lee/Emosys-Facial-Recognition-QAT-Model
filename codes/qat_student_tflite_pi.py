@@ -308,6 +308,7 @@ gesture_buffer = deque(maxlen=15)  # ~1.5s of smoothing at every-3rd-frame rate
 GEST_NEAR      = 0.35   # wrist near face region (increased for close-up cameras)
 GEST_MOUTH     = 0.20   # tighter — mouth is a smaller target
 GEST_EAR       = 0.25   # ear/temple region
+GEST_EYE       = 0.12   # eye region (small target, tight threshold)
 GEST_CHIN_OFF  = 0.10   # vertical offset to distinguish chin vs nose level
 
 gesture_debug_dist = "0.00"
@@ -411,6 +412,8 @@ while True:
             mouth_right = lm[10]   # Landmark 10 = Mouth Right Corner
             ear_left    = lm[7]    # Landmark 7  = Left Ear
             ear_right   = lm[8]    # Landmark 8  = Right Ear
+            eye_left    = lm[2]    # Landmark 2  = Left Eye
+            eye_right   = lm[5]    # Landmark 5  = Right Eye
 
             # Distance from each wrist to nose, pick the closer (active) wrist
             d_left  = dist(left_wrist,  nose)
@@ -425,11 +428,15 @@ while True:
                           dist(active_wrist, mouth_right))
             d_ear   = min(dist(active_wrist, ear_left),
                           dist(active_wrist, ear_right))
+            d_eye   = min(dist(active_wrist, eye_left),
+                          dist(active_wrist, eye_right))
 
             # Apply spatial rules
-            # Specific targets (mouth, ear) are checked first to prevent the
-            # broad nose-proximity block from absorbing Mouth Cover / Head Scratch.
-            if d_mouth < GEST_MOUTH:
+            # Most specific / smallest targets are checked first to prevent
+            # the broad nose-proximity block from absorbing them.
+            if d_eye < GEST_EYE:
+                raw_gesture = "Eye Scratch"
+            elif d_mouth < GEST_MOUTH:
                 raw_gesture = "Mouth Cover"
             elif d_ear < GEST_EAR:
                 raw_gesture = "Head Scratch"
