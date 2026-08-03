@@ -447,9 +447,6 @@ while True:
             else:
                 raw_gesture = "Neutral"
 
-            # Print to terminal for debugging the bounding box
-            print(f"DEBUG | idx_dist={idx_dist:.2f}, y_offset={active_index.y - nose.y:.2f}, x_offset={abs(active_index.x - nose.x):.2f} -> {raw_gesture}")
-
             # Temporal smoothing 
             gesture_buffer.append(raw_gesture)
             gesture_label = Counter(gesture_buffer).most_common(1)[0][0]
