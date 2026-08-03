@@ -1,6 +1,7 @@
 import argparse
 import csv
 import os
+import threading
 import cv2
 import numpy as np
 from tflite_runtime.interpreter import Interpreter
@@ -734,7 +735,8 @@ while True:
 
                 log_text = "\n".join(lines)
                 log_file.write(log_text + "\n")
-                log_file.flush()
+                # flush() removed — forcing an SD-card write on every log
+                # interval stalls the main loop; Python flushes on its own schedule.
 
                 history_buffer.append(f"[{timestamp}] F#{fid}: {top1_label.upper()} {top1_conf*100:.1f}%")
 
@@ -885,7 +887,14 @@ while True:
         frame_jpeg_bytes = buffer.tobytes()
         
         # 3. Send it to the dashboard
-        push_result(detected_emotion, confidence_score, frame_jpeg_bytes, posture_score, posture_label, gesture_label)
+        # Run push_result in a background thread so a slow/timeout
+        # network request never freezes the camera display loop.
+        threading.Thread(
+            target = push_result,
+            args   = (detected_emotion, confidence_score, frame_jpeg_bytes,
+                      posture_score, posture_label, gesture_label),
+            daemon = True
+        ).start()
 
         last_capture_time = current_time_capture
 
