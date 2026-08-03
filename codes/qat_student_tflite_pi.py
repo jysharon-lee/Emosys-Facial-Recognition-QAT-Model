@@ -305,10 +305,13 @@ gesture_label  = "Neutral"     # current confirmed gesture label
 gesture_buffer = deque(maxlen=15)  # ~1.5s of smoothing at every-3rd-frame rate
 
 # Thresholds (normalized 0.0-1.0 landmark coordinates)
+# NOTE: dist() measures wrist-to-landmark distance. Because the wrist sits
+# several centimeters behind the fingertips, all thresholds must account for
+# the wrist-to-fingertip offset (~0.10-0.15 units at typical camera distances).
 GEST_NEAR      = 0.35   # wrist near face region (increased for close-up cameras)
-GEST_MOUTH     = 0.20   # tighter — mouth is a smaller target
-GEST_EAR       = 0.25   # ear/temple region
-GEST_EYE       = 0.12   # eye region (small target, tight threshold)
+GEST_MOUTH     = 0.32   # mouth cover  (loosened: wrist hangs below mouth when covering)
+GEST_EAR       = 0.38   # ear/temple   (loosened: ear is far from nose, wrist offset adds up)
+GEST_EYE       = 0.22   # eye scratch  (loosened: eye is small but wrist offset inflates dist)
 GEST_CHIN_OFF  = 0.10   # vertical offset to distinguish chin vs nose level
 
 gesture_debug_dist = "0.00"
