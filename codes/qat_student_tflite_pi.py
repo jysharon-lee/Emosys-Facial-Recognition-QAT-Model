@@ -311,7 +311,7 @@ gesture_buffer = deque(maxlen=15)  # ~1.5s of smoothing at every-3rd-frame rate
 # the wrist-to-fingertip offset (~0.10-0.15 units at typical camera distances).
 GEST_NEAR       = 0.35  # wrist near face region
 GEST_EAR        = 0.38  # wrist-to-ear distance ceiling (wrist offset accounted for)
-GEST_EYE_INDEX  = 0.08  # index-to-eye distance ceiling (extremely tight, tracks actual fingertip)
+GEST_EYE_INDEX  = 0.15  # index-to-eye distance ceiling (loosened for Lite model inaccuracy)
 GEST_LATERAL    = 0.15  # min x-offset from nose for Head Scratch (must be to the side)
 GEST_CHIN_OFF   = 0.10  # vertical offset to distinguish chin vs nose level
 gesture_debug_dist = "0.00"
@@ -450,6 +450,9 @@ while True:
                 raw_gesture = "Chin Rest"
             else:
                 raw_gesture = "Neutral"
+
+            # Print to terminal (keeps the screen clean as requested)
+            print(f"DEBUG | near={d_near:.2f}, eye_idx={d_eye_index:.2f}, ear={d_ear:.2f} -> {raw_gesture}")
 
             # Temporal smoothing 
             gesture_buffer.append(raw_gesture)
