@@ -426,18 +426,20 @@ while True:
             d_ear   = min(dist(active_wrist, ear_left),
                           dist(active_wrist, ear_right))
 
-            # Apply spatial rules 
-            if d_near < GEST_NEAR:
+            # Apply spatial rules
+            # Specific targets (mouth, ear) are checked first to prevent the
+            # broad nose-proximity block from absorbing Mouth Cover / Head Scratch.
+            if d_mouth < GEST_MOUTH:
+                raw_gesture = "Mouth Cover"
+            elif d_ear < GEST_EAR:
+                raw_gesture = "Head Scratch"
+            elif d_near < GEST_NEAR:
                 if active_wrist.y > nose.y + GEST_CHIN_OFF:
                     raw_gesture = "Chin Rest"
                 elif active_wrist.y < nose.y - GEST_CHIN_OFF:
                     raw_gesture = "Forehead Rub"
                 else:
                     raw_gesture = "Face Touch"
-            elif d_mouth < GEST_MOUTH:
-                raw_gesture = "Mouth Cover"
-            elif d_ear < GEST_EAR:
-                raw_gesture = "Head Scratch"
             else:
                 raw_gesture = "Neutral"
 
