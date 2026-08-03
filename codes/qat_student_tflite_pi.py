@@ -308,11 +308,12 @@ gesture_buffer = deque(maxlen=15)  # ~1.5s of smoothing at every-3rd-frame rate
 # NOTE: dist() measures wrist-to-landmark distance. Because the wrist sits
 # several centimeters behind the fingertips, all thresholds must account for
 # the wrist-to-fingertip offset (~0.10-0.15 units at typical camera distances).
-GEST_NEAR      = 0.35   # wrist near face region (increased for close-up cameras)
-GEST_MOUTH     = 0.32   # mouth cover  (loosened: wrist hangs below mouth when covering)
-GEST_EAR       = 0.38   # ear/temple   (loosened: ear is far from nose, wrist offset adds up)
-GEST_EYE       = 0.22   # eye scratch  (loosened: eye is small but wrist offset inflates dist)
-GEST_CHIN_OFF  = 0.10   # vertical offset to distinguish chin vs nose level
+GEST_NEAR       = 0.35  # wrist near face region
+GEST_EAR        = 0.38  # wrist-to-ear distance ceiling (wrist offset accounted for)
+GEST_EYE        = 0.22  # wrist-to-eye distance ceiling (wrist offset accounted for)
+GEST_LATERAL    = 0.15  # min x-offset from nose for Head Scratch (must be to the side)
+GEST_EYE_VALIGN = 0.10  # max vertical misalignment from eye center for Eye Scratch
+GEST_CHIN_OFF   = 0.10  # vertical offset to distinguish chin vs forehead vs nose level
 
 gesture_debug_dist = "0.00"
 
@@ -408,11 +409,9 @@ while True:
                 posture_label = "Relaxed"
                 posture_score = 0.0
 
-            # Gesture Detection 
+            # Gesture Detection
             left_wrist  = lm[15]   # Landmark 15 = Left Wrist
             right_wrist = lm[16]   # Landmark 16 = Right Wrist
-            mouth_left  = lm[9]    # Landmark 9  = Mouth Left Corner
-            mouth_right = lm[10]   # Landmark 10 = Mouth Right Corner
             ear_left    = lm[7]    # Landmark 7  = Left Ear
             ear_right   = lm[8]    # Landmark 8  = Right Ear
             eye_left    = lm[2]    # Landmark 2  = Left Eye
@@ -423,25 +422,35 @@ while True:
             d_right = dist(right_wrist, nose)
             active_wrist = left_wrist if d_left <= d_right else right_wrist
             d_near       = min(d_left, d_right)
-            
+
             gesture_debug_dist = f"{d_near:.2f}"
 
-            # Distance from active wrist to bilateral landmarks
-            d_mouth = min(dist(active_wrist, mouth_left),
-                          dist(active_wrist, mouth_right))
-            d_ear   = min(dist(active_wrist, ear_left),
-                          dist(active_wrist, ear_right))
-            d_eye   = min(dist(active_wrist, eye_left),
-                          dist(active_wrist, eye_right))
+            # Distance from active wrist to bilateral targets
+            d_ear = min(dist(active_wrist, ear_left),
+                        dist(active_wrist, ear_right))
+            d_eye = min(dist(active_wrist, eye_left),
+                        dist(active_wrist, eye_right))
+
+            # Secondary spatial helpers
+            # How far the wrist is to the side of the nose (x-axis)
+            d_lateral    = abs(active_wrist.x - nose.x)
+            # Vertical centre of the two eye landmarks
+            eye_center_y = (eye_left.y + eye_right.y) / 2.0
 
             # Apply spatial rules
-            # Most specific / smallest targets are checked first to prevent
-            # the broad nose-proximity block from absorbing them.
-            if d_eye < GEST_EYE:
+            # Each specific gesture requires BOTH a distance threshold AND a
+            # positional constraint so large distance ceilings cannot steal
+            # classifications from the face-near gestures.
+            #
+            # Eye Scratch  : wrist near eye distance AND vertically at eye level
+            #                (prevents Forehead Rub from being absorbed, because
+            #                 during Forehead Rub the wrist is ABOVE eye level)
+            # Head Scratch : wrist near ear distance AND clearly to the side
+            #                (prevents front-of-face gestures being absorbed,
+            #                 because during those the wrist has low lateral offset)
+            if d_eye < GEST_EYE and abs(active_wrist.y - eye_center_y) < GEST_EYE_VALIGN:
                 raw_gesture = "Eye Scratch"
-            elif d_mouth < GEST_MOUTH:
-                raw_gesture = "Mouth Cover"
-            elif d_ear < GEST_EAR:
+            elif d_ear < GEST_EAR and d_lateral > GEST_LATERAL:
                 raw_gesture = "Head Scratch"
             elif d_near < GEST_NEAR:
                 if active_wrist.y > nose.y + GEST_CHIN_OFF:
