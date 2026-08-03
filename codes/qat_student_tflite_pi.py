@@ -311,10 +311,9 @@ gesture_buffer = deque(maxlen=15)  # ~1.5s of smoothing at every-3rd-frame rate
 # the wrist-to-fingertip offset (~0.10-0.15 units at typical camera distances).
 GEST_NEAR       = 0.35  # wrist near face region
 GEST_EAR        = 0.38  # wrist-to-ear distance ceiling (wrist offset accounted for)
-GEST_EYE        = 0.25  # wrist-to-eye distance ceiling (slightly loosened)
-GEST_LATERAL          = 0.15  # min x-offset from nose for Head Scratch (must be to the side)
-GEST_EYE_VALIGN       = 0.15  # max vertical misalignment from eye center for Eye Scratch
-GEST_CHIN_OFF         = 0.10  # vertical offset to distinguish chin vs nose level
+GEST_EYE_INDEX  = 0.08  # index-to-eye distance ceiling (extremely tight, tracks actual fingertip)
+GEST_LATERAL    = 0.15  # min x-offset from nose for Head Scratch (must be to the side)
+GEST_CHIN_OFF   = 0.10  # vertical offset to distinguish chin vs nose level
 gesture_debug_dist = "0.00"
 
 # Per-face posture history for graphing
@@ -412,45 +411,38 @@ while True:
             # Gesture Detection
             left_wrist  = lm[15]   # Landmark 15 = Left Wrist
             right_wrist = lm[16]   # Landmark 16 = Right Wrist
+            left_index  = lm[19]   # Landmark 19 = Left Index
+            right_index = lm[20]   # Landmark 20 = Right Index
             ear_left    = lm[7]    # Landmark 7  = Left Ear
             ear_right   = lm[8]    # Landmark 8  = Right Ear
             eye_left    = lm[2]    # Landmark 2  = Left Eye
             eye_right   = lm[5]    # Landmark 5  = Right Eye
 
-            # Distance from each wrist to nose, pick the closer (active) wrist
+            # Distance from each wrist to nose, pick the closer (active) side
             d_left  = dist(left_wrist,  nose)
             d_right = dist(right_wrist, nose)
             active_wrist = left_wrist if d_left <= d_right else right_wrist
+            active_index = left_index if d_left <= d_right else right_index
             d_near       = min(d_left, d_right)
 
-            # Distance from active wrist to bilateral targets
+            # Distance from active wrist to bilateral targets (for Head Scratch)
             d_ear = min(dist(active_wrist, ear_left),
                         dist(active_wrist, ear_right))
-            d_eye = min(dist(active_wrist, eye_left),
-                        dist(active_wrist, eye_right))
+            
+            # Distance from active INDEX FINGER to eyes (for Eye Scratch)
+            d_eye_index = min(dist(active_index, eye_left),
+                              dist(active_index, eye_right))
 
             # Secondary spatial helpers
             # How far the wrist is to the side of the nose (x-axis)
             d_lateral    = abs(active_wrist.x - nose.x)
-            # Vertical centre of the two eye landmarks
-            eye_center_y = (eye_left.y + eye_right.y) / 2.0
 
-            # Find which ear is closer to the active wrist for relative horizontal bounds
-            active_ear = ear_left if dist(active_wrist, ear_left) < dist(active_wrist, ear_right) else ear_right
-
-            # Update debug display with all relevant distances for live tuning
-            gesture_debug_dist = f"near={d_near:.2f} eye={d_eye:.2f} ear={d_ear:.2f}"
-
-            # Eye Scratch  : wrist must be in the face-proximity zone (d_near),
-            #                close to an eye, at eye height, AND the wrist must
-            #                be horizontally closer to the nose than the ear is.
-            #                This 2D relative bound rejects back/side head scratches
-            #                where the wrist typically extends wider than the face.
+            # Eye Scratch  : index finger touches the eye (d_eye_index < 0.08)
+            #                This avoids all the math needed to guess where the 
+            #                wrist is hanging while the fingers are on the eye.
+            #                (Keeps d_near gate just to be safe that hand is near face).
             # Head Scratch : wrist near ear AND clearly to the side.
-            if (d_near < GEST_NEAR
-                    and d_eye < GEST_EYE
-                    and abs(active_wrist.y - eye_center_y) < GEST_EYE_VALIGN
-                    and abs(active_wrist.x - nose.x) < abs(active_ear.x - nose.x) + 0.05):
+            if d_near < GEST_NEAR and d_eye_index < GEST_EYE_INDEX:
                 raw_gesture = "Eye Scratch"
             elif d_ear < GEST_EAR and d_lateral > GEST_LATERAL:
                 raw_gesture = "Head Scratch"
