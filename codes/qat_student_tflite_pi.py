@@ -311,7 +311,7 @@ gesture_buffer = deque(maxlen=15)  # ~1.5s of smoothing at every-3rd-frame rate
 # the wrist-to-fingertip offset (~0.10-0.15 units at typical camera distances).
 GEST_NEAR       = 0.35  # wrist near face region
 GEST_EAR        = 0.38  # wrist-to-ear distance ceiling (wrist offset accounted for)
-GEST_EYE        = 0.22  # wrist-to-eye distance ceiling (wrist offset accounted for)
+GEST_EYE        = 0.25  # wrist-to-eye distance ceiling (slightly loosened)
 GEST_LATERAL          = 0.15  # min x-offset from nose for Head Scratch (must be to the side)
 GEST_EYE_VALIGN       = 0.15  # max vertical misalignment from eye center for Eye Scratch
 GEST_CHIN_OFF         = 0.10  # vertical offset to distinguish chin vs nose level
@@ -424,8 +424,6 @@ while True:
             active_wrist = left_wrist if d_left <= d_right else right_wrist
             d_near       = min(d_left, d_right)
 
-            gesture_debug_dist = f"{d_near:.2f}"
-
             # Distance from active wrist to bilateral targets
             d_ear = min(dist(active_wrist, ear_left),
                         dist(active_wrist, ear_right))
@@ -438,18 +436,15 @@ while True:
             # Vertical centre of the two eye landmarks
             eye_center_y = (eye_left.y + eye_right.y) / 2.0
 
-            # Apply spatial rules
-            # Each specific gesture requires BOTH a distance threshold AND a
-            # positional constraint so large distance ceilings cannot steal
-            # classifications from the face-near gestures.
-            #
-            # Eye Scratch  : wrist is near the eye AND closer to the eye than
-            #                to the ear (ratio check separates it from Head Scratch
-            #                regardless of face width or lateral wrist position)
-            # Head Scratch : wrist is near the ear AND clearly to the side
+            # Update debug display with all relevant distances for live tuning
+            gesture_debug_dist = f"near={d_near:.2f} eye={d_eye:.2f} ear={d_ear:.2f}"
+
+            # Eye Scratch  : wrist near eye AND vertically at eye height.
+            #                Checked first in the chain so Head Scratch can't
+            #                steal it — if this fires, Head Scratch is skipped.
+            # Head Scratch : wrist near ear AND clearly to the side.
             if (d_eye < GEST_EYE
-                    and abs(active_wrist.y - eye_center_y) < GEST_EYE_VALIGN
-                    and d_eye < d_ear):
+                    and abs(active_wrist.y - eye_center_y) < GEST_EYE_VALIGN):
                 raw_gesture = "Eye Scratch"
             elif d_ear < GEST_EAR and d_lateral > GEST_LATERAL:
                 raw_gesture = "Head Scratch"
@@ -650,7 +645,7 @@ while True:
             draw_label(frame, f"Posture: {posture_label}  [gap={posture_gap_debug}]", x1, y2 + 38, 0.5, (255, 255, 0))
 
             # Gesture label + raw distance debug
-            draw_label(frame, f"Gesture: {gesture_label} [dist={gesture_debug_dist}]", x1, y2 + 58, 0.5, (0, 200, 255))
+            draw_label(frame, f"Gesture: {gesture_label} [{gesture_debug_dist}]", x1, y2 + 58, 0.45, (0, 200, 255))
 
             # Draw emotion labels per face
             if top1_conf < CONF_THRESHOLD:
