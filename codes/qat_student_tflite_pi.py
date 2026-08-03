@@ -315,9 +315,6 @@ GEST_EYE        = 0.25  # wrist-to-eye distance ceiling (slightly loosened)
 GEST_LATERAL          = 0.15  # min x-offset from nose for Head Scratch (must be to the side)
 GEST_EYE_VALIGN       = 0.15  # max vertical misalignment from eye center for Eye Scratch
 GEST_CHIN_OFF         = 0.10  # vertical offset to distinguish chin vs nose level
-GEST_VIS_MIN          = 0.65  # min wrist visibility to trust its (x,y) for Eye Scratch
-GEST_Z_BEHIND         = 0.15  # max z-depth behind nose for Eye Scratch (wrist behind head = reject)
-
 gesture_debug_dist = "0.00"
 
 # Per-face posture history for graphing
@@ -438,27 +435,22 @@ while True:
             # Vertical centre of the two eye landmarks
             eye_center_y = (eye_left.y + eye_right.y) / 2.0
 
-            # Wrist depth & visibility — the key signals for rejecting
-            # back-of-head false positives that 2D distance cannot catch.
-            wrist_vis = active_wrist.visibility   # 0-1, low = occluded
-            z_diff    = nose.z - active_wrist.z    # positive = wrist behind nose
+            # Find which ear is closer to the active wrist for relative horizontal bounds
+            active_ear = ear_left if dist(active_wrist, ear_left) < dist(active_wrist, ear_right) else ear_right
 
             # Update debug display with all relevant distances for live tuning
-            gesture_debug_dist = (f"near={d_near:.2f} eye={d_eye:.2f} "
-                                 f"ear={d_ear:.2f} vis={wrist_vis:.2f} z={z_diff:.2f}")
+            gesture_debug_dist = f"near={d_near:.2f} eye={d_eye:.2f} ear={d_ear:.2f}"
 
             # Eye Scratch  : wrist must be in the face-proximity zone (d_near),
             #                close to an eye, at eye height, AND the wrist must
-            #                be VISIBLE (not occluded) with z-depth in front of
-            #                the face plane. The vis + z gates are the only way
-            #                to reject back-of-head scratches where the 2D
-            #                projection collapses onto the eye coordinates.
+            #                be horizontally closer to the nose than the ear is.
+            #                This 2D relative bound rejects back/side head scratches
+            #                where the wrist typically extends wider than the face.
             # Head Scratch : wrist near ear AND clearly to the side.
             if (d_near < GEST_NEAR
                     and d_eye < GEST_EYE
                     and abs(active_wrist.y - eye_center_y) < GEST_EYE_VALIGN
-                    and wrist_vis > GEST_VIS_MIN
-                    and z_diff < GEST_Z_BEHIND):
+                    and abs(active_wrist.x - nose.x) < abs(active_ear.x - nose.x) + 0.05):
                 raw_gesture = "Eye Scratch"
             elif d_ear < GEST_EAR and d_lateral > GEST_LATERAL:
                 raw_gesture = "Head Scratch"
