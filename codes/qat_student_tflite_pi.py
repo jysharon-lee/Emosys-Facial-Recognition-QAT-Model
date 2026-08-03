@@ -439,11 +439,15 @@ while True:
             # Update debug display with all relevant distances for live tuning
             gesture_debug_dist = f"near={d_near:.2f} eye={d_eye:.2f} ear={d_ear:.2f}"
 
-            # Eye Scratch  : wrist near eye AND vertically at eye height.
-            #                Checked first in the chain so Head Scratch can't
-            #                steal it — if this fires, Head Scratch is skipped.
+            # Eye Scratch  : wrist must be in the face-proximity zone (d_near)
+            #                AND close to an eye AND at eye height.
+            #                The d_near gate is critical: dist() is 2D-only, so a
+            #                wrist behind the head can project near the eye in (x,y).
+            #                d_near (wrist-to-nose) is large when the hand is behind
+            #                the head, reliably rejecting those false positives.
             # Head Scratch : wrist near ear AND clearly to the side.
-            if (d_eye < GEST_EYE
+            if (d_near < GEST_NEAR
+                    and d_eye < GEST_EYE
                     and abs(active_wrist.y - eye_center_y) < GEST_EYE_VALIGN):
                 raw_gesture = "Eye Scratch"
             elif d_ear < GEST_EAR and d_lateral > GEST_LATERAL:
