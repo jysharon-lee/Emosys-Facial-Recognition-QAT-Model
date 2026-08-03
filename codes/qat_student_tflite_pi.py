@@ -309,11 +309,11 @@ gesture_buffer = deque(maxlen=15)  # ~1.5s of smoothing at every-3rd-frame rate
 # NOTE: dist() measures wrist-to-landmark distance. Because the wrist sits
 # several centimeters behind the fingertips, all thresholds must account for
 # the wrist-to-fingertip offset (~0.10-0.15 units at typical camera distances).
-GEST_NEAR       = 0.35  # wrist near face region
-GEST_EAR        = 0.38  # wrist-to-ear distance ceiling (wrist offset accounted for)
-GEST_EYE_INDEX  = 0.15  # index-to-eye distance ceiling (loosened for Lite model inaccuracy)
-GEST_LATERAL    = 0.15  # min x-offset from nose for Head Scratch (must be to the side)
-GEST_CHIN_OFF   = 0.10  # vertical offset to distinguish chin vs nose level
+# The bounding box rules for gestures
+GEST_PROXIMITY  = 0.45  # Index finger must be within this distance to nose to count as a gesture
+GEST_CHIN_Y     = 0.05  # How far below the nose starts the "Chin Rest" zone
+GEST_EYE_TOP    = 0.18  # How far above the nose is the top of the "Eye" zone
+GEST_EYE_WIDTH  = 0.15  # How wide from the center of the nose is the "Eye" zone
 gesture_debug_dist = "0.00"
 
 # Per-face posture history for graphing
@@ -425,34 +425,30 @@ while True:
             active_index = left_index if d_left <= d_right else right_index
             d_near       = min(d_left, d_right)
 
-            # Distance from active wrist to bilateral targets (for Head Scratch)
-            d_ear = min(dist(active_wrist, ear_left),
-                        dist(active_wrist, ear_right))
+            # Distance from index finger to nose to ensure hand is near the face
+            idx_dist = dist(active_index, nose)
+
+            # We use a pure anatomical bounding-box approach using the index finger.
+            # This completely bypasses the Euclidean distance errors of the Lite model.
             
-            # Distance from active INDEX FINGER to eyes (for Eye Scratch)
-            d_eye_index = min(dist(active_index, eye_left),
-                              dist(active_index, eye_right))
-
-            # Secondary spatial helpers
-            # How far the wrist is to the side of the nose (x-axis)
-            d_lateral    = abs(active_wrist.x - nose.x)
-
-            # Eye Scratch  : index finger touches the eye (d_eye_index < 0.08)
-            #                This avoids all the math needed to guess where the 
-            #                wrist is hanging while the fingers are on the eye.
-            #                (Keeps d_near gate just to be safe that hand is near face).
-            # Head Scratch : wrist near ear AND clearly to the side.
-            if d_near < GEST_NEAR and d_eye_index < GEST_EYE_INDEX:
-                raw_gesture = "Eye Scratch"
-            elif d_ear < GEST_EAR and d_lateral > GEST_LATERAL:
-                raw_gesture = "Head Scratch"
-            elif d_near < GEST_NEAR and active_wrist.y > nose.y + GEST_CHIN_OFF:
-                raw_gesture = "Chin Rest"
+            if idx_dist < GEST_PROXIMITY:
+                # 1. CHIN ZONE: Is the index finger below the nose?
+                if active_index.y > nose.y + GEST_CHIN_Y:
+                    raw_gesture = "Chin Rest"
+                
+                # 2. EYE ZONE: Is it in the center of the face, not too high up?
+                elif (active_index.y > nose.y - GEST_EYE_TOP 
+                      and abs(active_index.x - nose.x) < GEST_EYE_WIDTH):
+                    raw_gesture = "Eye Scratch"
+                
+                # 3. HEAD ZONE: Anything else near the face (top of head, side of head/ears)
+                else:
+                    raw_gesture = "Head Scratch"
             else:
                 raw_gesture = "Neutral"
 
-            # Print to terminal (keeps the screen clean as requested)
-            print(f"DEBUG | near={d_near:.2f}, eye_idx={d_eye_index:.2f}, ear={d_ear:.2f} -> {raw_gesture}")
+            # Print to terminal for debugging the bounding box
+            print(f"DEBUG | idx_dist={idx_dist:.2f}, y_offset={active_index.y - nose.y:.2f}, x_offset={abs(active_index.x - nose.x):.2f} -> {raw_gesture}")
 
             # Temporal smoothing 
             gesture_buffer.append(raw_gesture)
