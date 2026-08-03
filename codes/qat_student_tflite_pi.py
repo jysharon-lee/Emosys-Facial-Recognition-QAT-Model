@@ -311,9 +311,10 @@ gesture_buffer = deque(maxlen=15)  # ~1.5s of smoothing at every-3rd-frame rate
 GEST_NEAR       = 0.35  # wrist near face region
 GEST_EAR        = 0.38  # wrist-to-ear distance ceiling (wrist offset accounted for)
 GEST_EYE        = 0.22  # wrist-to-eye distance ceiling (wrist offset accounted for)
-GEST_LATERAL    = 0.15  # min x-offset from nose for Head Scratch (must be to the side)
-GEST_EYE_VALIGN = 0.10  # max vertical misalignment from eye center for Eye Scratch
-GEST_CHIN_OFF   = 0.10  # vertical offset to distinguish chin vs forehead vs nose level
+GEST_LATERAL          = 0.15  # min x-offset from nose for Head Scratch (must be to the side)
+GEST_EYE_VALIGN       = 0.15  # max vertical misalignment from eye center for Eye Scratch (loosened)
+GEST_EYE_LATERAL_MAX  = 0.28  # max x-offset from nose for Eye Scratch (eye is not as lateral as ear)
+GEST_CHIN_OFF         = 0.10  # vertical offset to distinguish chin vs forehead vs nose level
 
 gesture_debug_dist = "0.00"
 
@@ -448,7 +449,9 @@ while True:
             # Head Scratch : wrist near ear distance AND clearly to the side
             #                (prevents front-of-face gestures being absorbed,
             #                 because during those the wrist has low lateral offset)
-            if d_eye < GEST_EYE and abs(active_wrist.y - eye_center_y) < GEST_EYE_VALIGN:
+            if (d_eye < GEST_EYE
+                    and abs(active_wrist.y - eye_center_y) < GEST_EYE_VALIGN
+                    and d_lateral < GEST_EYE_LATERAL_MAX):
                 raw_gesture = "Eye Scratch"
             elif d_ear < GEST_EAR and d_lateral > GEST_LATERAL:
                 raw_gesture = "Head Scratch"
