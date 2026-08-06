@@ -14,7 +14,14 @@ st.markdown("""
         /* Base styles */
         .stApp {
             background-color: #F7F7F7;
+            color: #1E1E1E !important;
         }
+        
+        /* Force text colors to be dark to fix OS Dark Mode conflicts */
+        p, h1, h2, h3, h4, h5, h6, span, div {
+            color: #1E1E1E;
+        }
+        
         /* Hide main menu and footer */
         #MainMenu {visibility: hidden;}
         footer {visibility: hidden;}
@@ -33,7 +40,7 @@ st.markdown("""
             background-color: #2D3282;
             color: white !important;
         }
-        .hero-metric label, .hero-metric div {
+        .hero-metric label, .hero-metric div, .hero-metric span, .hero-metric p {
             color: white !important;
         }
         
@@ -41,6 +48,11 @@ st.markdown("""
         section[data-testid="stSidebar"] {
             background-color: #FFFFFF;
             border-right: 1px solid #E8E8E8;
+        }
+        
+        /* Fix Warning Box text */
+        div[data-testid="stNotification"] p {
+            color: #856404 !important;
         }
     </style>
 """, unsafe_allow_html=True)
