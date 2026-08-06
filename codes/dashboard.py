@@ -274,6 +274,54 @@ with col_c4:
         st.plotly_chart(fig_env, use_container_width=True)
 
 # -----------------
+# GESTURE & BEHAVIOR (ROW 4)
+# -----------------
+st.write("")
+col_g1, col_g2 = st.columns([1, 2])
+
+with col_g1:
+    st.markdown("**Gesture Distribution**", unsafe_allow_html=True)
+    if not df_person.empty and latest['person_id'] != 'None' and 'gesture' in df_person.columns:
+        counts = df_person['gesture'].value_counts()
+        fig_g = px.pie(
+            values=counts.values,
+            names=counts.index,
+            hole=0.4,
+            color_discrete_sequence=px.colors.qualitative.Pastel
+        )
+        fig_g.update_layout(
+            margin=dict(l=0, r=0, t=10, b=0),
+            height=300
+        )
+        st.plotly_chart(fig_g, use_container_width=True)
+    else:
+        st.info("No gesture data.")
+
+with col_g2:
+    st.markdown("**Gesture Timeline**", unsafe_allow_html=True)
+    if not df_person.empty and latest['person_id'] != 'None' and 'gesture' in df_person.columns:
+        fig_time = px.scatter(
+            df_person,
+            x=df_person['timestamp'] - df['timestamp'].min(),
+            y="gesture",
+            color="gesture",
+            color_discrete_sequence=px.colors.qualitative.Pastel
+        )
+        fig_time.update_layout(
+            margin=dict(l=0, r=0, t=10, b=0),
+            plot_bgcolor='white',
+            paper_bgcolor='white',
+            xaxis=dict(gridcolor='#E8E8E8', title="Time (s)"),
+            yaxis=dict(title="", gridcolor='#E8E8E8'),
+            height=300,
+            showlegend=False
+        )
+        st.plotly_chart(fig_time, use_container_width=True)
+    else:
+        st.info("No gesture data.")
+
+
+# -----------------
 # DOWNLOAD
 # -----------------
 st.write("---")
