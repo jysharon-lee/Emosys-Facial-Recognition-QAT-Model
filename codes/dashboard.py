@@ -116,7 +116,7 @@ with col2:
 # CURRENT METRICS (ROW 1)
 # -----------------
 st.write("---")
-col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+col_m1, col_m2, col_m3, col_m4, col_m5 = st.columns(5)
 
 if not df_person.empty:
     latest = df_person.iloc[-1]
@@ -135,14 +135,19 @@ if not df_person.empty:
     with col_m2:
         st.metric(label="Posture Status", value=latest['posture_label'], delta=f"Score: {latest['posture_score']:.2f}", delta_color="off")
         
-    # 3. Env. Discomfort
+    # 3. Gesture
     with col_m3:
+        gesture_val = str(latest.get('gesture', 'N/A')) if latest['person_id'] != 'None' else "N/A"
+        st.metric(label="Gesture", value=gesture_val, delta="Current Action", delta_color="off")
+
+    # 4. Env. Discomfort
+    with col_m4:
         disc = latest['discomfort']
         disc_lbl = "Comfortable" if disc < 50 else ("Moderate" if disc < 80 else "High")
         st.metric(label="Env. Discomfort", value=f"{disc:.0f}%", delta=disc_lbl, delta_color="inverse")
         
-    # 4. Avg Confidence
-    with col_m4:
+    # 5. Avg Confidence
+    with col_m5:
         if latest['person_id'] != 'None':
             avg_conf = df_person[latest['dominant_emotion']].mean() * 100
             st.metric(label="Avg Confidence", value=f"{avg_conf:.1f}%", delta="This session", delta_color="off")
