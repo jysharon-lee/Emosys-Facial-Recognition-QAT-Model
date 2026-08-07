@@ -432,16 +432,16 @@ while True:
             # This completely bypasses the Euclidean distance errors of the Lite model.
             
             if idx_dist < GEST_PROXIMITY:
-                # 1. CHIN ZONE: Is the index finger below the nose?
+                # 1 CHIN ZONE
                 if active_index.y > nose.y + GEST_CHIN_Y:
                     raw_gesture = "Chin Rest"
                 
-                # 2. EYE ZONE: Is it in the center of the face, not too high up?
+                # 2 EYE ZONE
                 elif (active_index.y > nose.y - GEST_EYE_TOP 
                       and abs(active_index.x - nose.x) < GEST_EYE_WIDTH):
                     raw_gesture = "Eye Scratch"
                 
-                # 3. HEAD ZONE: Anything else near the face (top of head, side of head/ears)
+                # 3 HEAD ZONE
                 else:
                     raw_gesture = "Head Scratch"
             else:
@@ -848,9 +848,7 @@ while True:
 
     cv2.imshow("Yunet + MB-V2 model(QAT)", frame)
 
-    # ---------------------------------------------------------
     # Periodic Frame Capture (every 30 seconds, face required)
-    # ---------------------------------------------------------
     current_time_capture = time.time()
     if (current_time_capture - last_capture_time >= CAPTURE_INTERVAL) and frame_preds:
         capture_counter += 1
