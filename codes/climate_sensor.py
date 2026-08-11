@@ -17,7 +17,7 @@ class ClimateReader:
         self.running = False
         self.thread = None
         
-        # Try to auto-connect to the first available COM port
+        # auto-connect to the first available COM port
         self._connect()
 
     def _connect(self):
