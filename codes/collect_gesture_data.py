@@ -45,7 +45,9 @@ except Exception:
     current_label = 0
 
 gesture_name = LABELS[current_label]
-csv_file     = f"dataset_gesture_{current_label}.csv"
+output_dir   = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "Gesture Dataset")
+os.makedirs(output_dir, exist_ok=True)
+csv_file     = os.path.join(output_dir, f"dataset_gesture_{current_label}.csv")
 print(f"\nRecording: [{current_label}] {gesture_name}")
 print(f"Output   : {csv_file}")
 print("Press R to start, Space to pause, Q to quit.\n")
