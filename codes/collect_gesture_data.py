@@ -20,9 +20,21 @@ LABELS = {
     6: "Fidgeting"
 }
 
-csv_file = "gesture_dataset.csv"
+# Ask user for gesture label in terminal before starting
+print("\n--- GESTURE DATA COLLECTION ---")
+print("Which gesture do you want to record?")
+for k, v in LABELS.items():
+    print(f"  {k}: {v}")
+try:
+    current_label = int(input("Enter gesture number (0-6): "))
+    if current_label not in LABELS:
+        raise ValueError
+except:
+    print("Invalid input. Defaulting to 0 (Neutral).")
+    current_label = 0
+
+csv_file = f"dataset_gesture_{current_label}.csv"
 is_recording = False
-current_label = 0
 
 def extract_features(results):
     # Extract pose
@@ -107,7 +119,7 @@ with mp_holistic.Holistic(min_detection_confidence=0.5, min_tracking_confidence=
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
 
         # Instructions
-        cv2.putText(image, "Press 0-6 to change gesture. R to record. Space to pause. Q to quit.", 
+        cv2.putText(image, "R to record. Space to pause. Q to quit and save.", 
                     (10, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
 
         cv2.imshow('ML Data Collection', image)
@@ -119,8 +131,6 @@ with mp_holistic.Holistic(min_detection_confidence=0.5, min_tracking_confidence=
             is_recording = True
         elif key == ord(' '):
             is_recording = False
-        elif ord('0') <= key <= ord('6'):
-            current_label = key - ord('0')
 
 cap.release()
 cv2.destroyAllWindows()
