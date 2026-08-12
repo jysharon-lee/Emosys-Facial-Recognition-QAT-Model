@@ -69,13 +69,15 @@ print("\n[3/7] Splitting data into Training and Validation sets...")
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
 print(f"Training on {len(X_train)} sequences, Validating on {len(X_test)} sequences.")
 
-# 4. Build LSTM Model
-print("\n[4/7] Building Keras LSTM Model...")
+# 4. Build Conv1D Model (TFLite-compatible alternative to LSTM)
+print("\n[4/7] Building Keras Conv1D Model...")
 model = tf.keras.Sequential([
     tf.keras.layers.Input(shape=(TIME_STEPS, N_FEATURES)),
-    tf.keras.layers.LSTM(32, return_sequences=False),
-    tf.keras.layers.Dropout(0.2),
-    tf.keras.layers.Dense(16, activation='relu'),
+    tf.keras.layers.Conv1D(64, kernel_size=3, activation='relu', padding='same'),
+    tf.keras.layers.Conv1D(32, kernel_size=3, activation='relu', padding='same'),
+    tf.keras.layers.GlobalAveragePooling1D(),
+    tf.keras.layers.Dropout(0.3),
+    tf.keras.layers.Dense(32, activation='relu'),
     tf.keras.layers.Dense(N_CLASSES, activation='softmax')
 ])
 
@@ -103,7 +105,7 @@ loss, acc = model.evaluate(X_test, y_test, verbose=0)
 print(f"\nFinal Validation Accuracy: {acc*100:.2f}%")
 
 model.save(MODEL_SAVE_PATH)
-print(f"Saved unoptimized Keras model to: {MODEL_SAVE_PATH}")
+print(f"Saved Keras model to: {MODEL_SAVE_PATH}")
 
 # 7. Convert to TFLite (Quantization)
 print("\n[6/7] Compiling to quantized TensorFlow Lite model for Raspberry Pi...")
