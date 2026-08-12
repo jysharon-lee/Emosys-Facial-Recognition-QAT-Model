@@ -14,7 +14,8 @@ class InfluxDBHandler:
         self.client = InfluxDBClient(
             url    = self.url,
             token  = self.token,
-            org = self.org
+            org    = self.org,
+            timeout = 2000  # 2 second timeout to fail fast
         )
 
         self.write_api  = self.client.write_api(
@@ -25,6 +26,11 @@ class InfluxDBHandler:
         self.last_saved_per_face = {}
         self.interval = 5 # seconds
 
+        # Circuit breaker: stop trying after N consecutive failures
+        self._fail_count = 0
+        self._max_failures = 3
+        self._disabled = False
+
     def _write_async(self, face_id, emotion, confidence, point):
         """Runs in a background thread — never blocks the main loop."""
         try:
@@ -34,11 +40,17 @@ class InfluxDBHandler:
                 record = point
             )
             self.last_saved_per_face[face_id] = time.time()
-            print(f"InfluxDB saved Face #{face_id}: {emotion} ({confidence:.2f})")
+            self._fail_count = 0  # reset on success
         except Exception as e:
-            print(f"InfluxDB save failed for Face #{face_id}: {e}")
+            self._fail_count += 1
+            if self._fail_count >= self._max_failures:
+                self._disabled = True
+                print(f"InfluxDB disabled after {self._max_failures} consecutive failures.")
 
     def write_prediction(self, face_id, emotion, confidence, posture_score, posture, gesture):
+
+        if self._disabled:
+            return
 
         current_time = time.time()
         

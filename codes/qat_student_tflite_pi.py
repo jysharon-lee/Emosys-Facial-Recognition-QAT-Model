@@ -4,10 +4,7 @@ import os
 import threading
 import cv2
 import numpy as np
-try:
-    from ai_edge_litert.interpreter import Interpreter
-except ImportError:
-    from tflite_runtime.interpreter import Interpreter
+from tflite_runtime.interpreter import Interpreter
 import json
 import time
 from collections import deque, Counter
@@ -303,7 +300,11 @@ pose_model = _PoseLandmarker.create_from_options(
 # Gesture ML Model (TFLite)
 # -----------------------------
 GESTURE_MODEL_PATH = "gesture_model.tflite"
-gesture_interpreter = Interpreter(model_path=GESTURE_MODEL_PATH)
+try:
+    from ai_edge_litert.interpreter import Interpreter as GestureInterpreter
+except ImportError:
+    GestureInterpreter = Interpreter  # fallback to tflite_runtime
+gesture_interpreter = GestureInterpreter(model_path=GESTURE_MODEL_PATH)
 gesture_interpreter.allocate_tensors()
 gesture_input_details  = gesture_interpreter.get_input_details()
 gesture_output_details = gesture_interpreter.get_output_details()
@@ -312,7 +313,7 @@ GESTURE_LABELS = ["Neutral", "Eye Scratch", "Head Scratch", "Chin Rest",
                   "Nose Scratching", "Neck Rubbing", "Fidgeting"]
 GESTURE_TIME_STEPS = 15   # must match training window
 GESTURE_N_FEATURES = 99   # 33 landmarks * 3 (x, y, z)
-GESTURE_CONFIDENCE = 0.60 # minimum confidence to accept a prediction
+GESTURE_CONFIDENCE = 0.40 # minimum confidence to accept a prediction
 
 print(f"Gesture ML model loaded: {GESTURE_MODEL_PATH}")
 
@@ -325,7 +326,60 @@ posture_gap_debug = "..."
 gesture_label  = "Neutral"
 gesture_landmark_buffer = deque(maxlen=GESTURE_TIME_STEPS)  # rolling window of normalized landmarks
 gesture_buffer = deque(maxlen=15)  # temporal smoothing of predictions
-gesture_infer_counter = 0
+gesture_lock = threading.Lock()
+
+def _gesture_inference_loop():
+    """Background thread: runs gesture ML inference every 0.5s without blocking video."""
+    global gesture_label
+    print("[GestureThread] Started.")
+    while True:
+        time.sleep(0.5)
+        if len(gesture_landmark_buffer) < GESTURE_TIME_STEPS:
+            continue
+        try:
+            # Snapshot the buffer
+            input_seq = np.array(list(gesture_landmark_buffer), dtype=np.float32)
+            input_seq = np.expand_dims(input_seq, axis=0)
+
+            with gesture_lock:
+                gesture_interpreter.set_tensor(
+                    gesture_input_details[0]['index'], input_seq
+                )
+                gesture_interpreter.invoke()
+                logits = gesture_interpreter.get_tensor(
+                    gesture_output_details[0]['index']
+                )[0]
+
+            # Apply softmax manually (TFLite conversion strips it)
+            exp_logits = np.exp(logits - np.max(logits))
+            prediction = exp_logits / exp_logits.sum()
+
+            best_idx  = int(np.argmax(prediction))
+            best_conf = float(prediction[best_idx])
+
+            if best_conf >= GESTURE_CONFIDENCE:
+                raw_gesture = GESTURE_LABELS[best_idx]
+            else:
+                raw_gesture = "Neutral"
+
+            gesture_buffer.append(raw_gesture)
+            gesture_label = Counter(gesture_buffer).most_common(1)[0][0]
+
+            # Diagnostic: show all class probabilities + key landmarks
+            probs_str = " | ".join(
+                f"{GESTURE_LABELS[i][:5]}:{prediction[i]:.2f}" for i in range(len(prediction))
+            )
+            # Show raw wrist positions from the input (landmarks 15,16 = wrists, relative to nose)
+            wrist_l = input_seq[0, -1, 45:48]  # last frame, landmark 15 (left wrist) x,y,z
+            wrist_r = input_seq[0, -1, 48:51]  # last frame, landmark 16 (right wrist) x,y,z
+            print(f"[Gesture] {raw_gesture} ({best_conf:.2f}) | {probs_str}")
+            print(f"  Wrist L: x={wrist_l[0]:.3f} y={wrist_l[1]:.3f} | Wrist R: x={wrist_r[0]:.3f} y={wrist_r[1]:.3f}")
+
+        except Exception as e:
+            print(f"[GestureThread ERROR] {e}")
+
+_gesture_thread = threading.Thread(target=_gesture_inference_loop, daemon=True)
+_gesture_thread.start()
 
 # Per-face posture history for graphing
 face_posture_history = {}     
@@ -420,42 +474,11 @@ while True:
                 posture_score = 0.0
 
             # ── Gesture Detection (ML) ─────────────────────────────────
-            # Normalize all 33 landmarks relative to nose (same as training)
+            # Just feed landmarks into the buffer; the background thread
+            # handles the heavy inference every 0.5s
             pts = np.array([[l.x, l.y, l.z] for l in lm], dtype=np.float32)
             pts -= pts[0]  # subtract nose position
             gesture_landmark_buffer.append(pts.flatten())
-
-            # Only run ML inference every 3rd pose frame (every 9th overall)
-            # to avoid killing the frame rate on the Pi
-            gesture_infer_counter += 1
-            if (len(gesture_landmark_buffer) == GESTURE_TIME_STEPS
-                    and gesture_infer_counter % 3 == 0):
-                # Build input tensor: shape (1, 15, 99)
-                input_seq = np.array(list(gesture_landmark_buffer), dtype=np.float32)
-                input_seq = np.expand_dims(input_seq, axis=0)
-
-                gesture_interpreter.set_tensor(
-                    gesture_input_details[0]['index'], input_seq
-                )
-                gesture_interpreter.invoke()
-                logits = gesture_interpreter.get_tensor(
-                    gesture_output_details[0]['index']
-                )[0]
-
-                # Apply softmax manually (TFLite conversion strips it)
-                exp_logits = np.exp(logits - np.max(logits))
-                prediction = exp_logits / exp_logits.sum()
-
-                best_idx  = int(np.argmax(prediction))
-                best_conf = float(prediction[best_idx])
-
-                if best_conf >= GESTURE_CONFIDENCE:
-                    raw_gesture = GESTURE_LABELS[best_idx]
-                else:
-                    raw_gesture = "Neutral"
-
-                gesture_buffer.append(raw_gesture)
-                gesture_label = Counter(gesture_buffer).most_common(1)[0][0]
 
         else:
             posture_label     = "Not Detected"
@@ -644,8 +667,9 @@ while True:
             # Posture label + raw gap debug value below face box
             draw_label(frame, f"Posture: {posture_label}  [gap={posture_gap_debug}]", x1, y2 + 38, 0.5, (255, 255, 0))
 
-            # Gesture label + raw distance debug
-            draw_label(frame, f"Gesture: {gesture_label}", x1, y2 + 58, 0.5, (0, 200, 255))
+            # Gesture label below posture (clamped to stay on screen)
+            gy = min(y2 + 58, frame.shape[0] - 10)
+            draw_label(frame, f"Gesture: {gesture_label}", x1, gy, 0.5, (0, 200, 255))
 
             # Draw emotion labels per face
             if top1_conf < CONF_THRESHOLD:

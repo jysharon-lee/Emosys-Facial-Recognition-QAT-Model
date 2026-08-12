@@ -9,8 +9,11 @@ import seaborn as sns
 
 print("TensorFlow Version:", tf.__version__)
 
-# Configuration
-DATASET_DIR = r"C:\Users\user\Documents\Emosys\EmoSys - KD N QAT\EmoSys - KD N QAT\Gesture Dataset"
+# Configuration - load from BOTH laptop and Pi datasets for robustness
+DATASET_DIRS = [
+    r"C:\Users\user\Documents\Emosys\EmoSys - KD N QAT\EmoSys - KD N QAT\Gesture Dataset",
+    r"C:\Users\user\Documents\Emosys\EmoSys - KD N QAT\EmoSys - KD N QAT\Gesture Dataset Pi",
+]
 MODEL_SAVE_PATH = r"C:\Users\user\Documents\Emosys\EmoSys - KD N QAT\EmoSys - KD N QAT\codes\gesture_model.h5"
 TFLITE_SAVE_PATH = r"C:\Users\user\Documents\Emosys\EmoSys - KD N QAT\EmoSys - KD N QAT\codes\gesture_model.tflite"
 
@@ -21,10 +24,15 @@ N_CLASSES = 7
 # 1. Load Data
 print("\n[1/7] Loading datasets...")
 import glob
-csv_files = glob.glob(os.path.join(DATASET_DIR, "dataset_gesture_*.csv"))
+
+csv_files = []
+for d in DATASET_DIRS:
+    found = glob.glob(os.path.join(d, "dataset_gesture_*.csv"))
+    csv_files.extend(found)
+    print(f"  Found {len(found)} files in {os.path.basename(d)}/")
 
 if not csv_files:
-    print(f"ERROR: Cannot find any dataset files in {DATASET_DIR}")
+    print(f"ERROR: Cannot find any dataset files.")
     exit()
 
 df_list = []
