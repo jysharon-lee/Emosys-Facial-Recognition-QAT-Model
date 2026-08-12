@@ -325,6 +325,7 @@ posture_gap_debug = "..."
 gesture_label  = "Neutral"
 gesture_landmark_buffer = deque(maxlen=GESTURE_TIME_STEPS)  # rolling window of normalized landmarks
 gesture_buffer = deque(maxlen=15)  # temporal smoothing of predictions
+gesture_infer_counter = 0
 
 # Per-face posture history for graphing
 face_posture_history = {}     
@@ -424,7 +425,11 @@ while True:
             pts -= pts[0]  # subtract nose position
             gesture_landmark_buffer.append(pts.flatten())
 
-            if len(gesture_landmark_buffer) == GESTURE_TIME_STEPS:
+            # Only run ML inference every 3rd pose frame (every 9th overall)
+            # to avoid killing the frame rate on the Pi
+            gesture_infer_counter += 1
+            if (len(gesture_landmark_buffer) == GESTURE_TIME_STEPS
+                    and gesture_infer_counter % 3 == 0):
                 # Build input tensor: shape (1, 15, 99)
                 input_seq = np.array(list(gesture_landmark_buffer), dtype=np.float32)
                 input_seq = np.expand_dims(input_seq, axis=0)
@@ -433,9 +438,13 @@ while True:
                     gesture_input_details[0]['index'], input_seq
                 )
                 gesture_interpreter.invoke()
-                prediction = gesture_interpreter.get_tensor(
+                logits = gesture_interpreter.get_tensor(
                     gesture_output_details[0]['index']
                 )[0]
+
+                # Apply softmax manually (TFLite conversion strips it)
+                exp_logits = np.exp(logits - np.max(logits))
+                prediction = exp_logits / exp_logits.sum()
 
                 best_idx  = int(np.argmax(prediction))
                 best_conf = float(prediction[best_idx])
@@ -444,12 +453,9 @@ while True:
                     raw_gesture = GESTURE_LABELS[best_idx]
                 else:
                     raw_gesture = "Neutral"
-            else:
-                raw_gesture = "Neutral"
 
-            # Temporal smoothing
-            gesture_buffer.append(raw_gesture)
-            gesture_label = Counter(gesture_buffer).most_common(1)[0][0]
+                gesture_buffer.append(raw_gesture)
+                gesture_label = Counter(gesture_buffer).most_common(1)[0][0]
 
         else:
             posture_label     = "Not Detected"
