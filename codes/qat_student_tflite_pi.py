@@ -296,25 +296,32 @@ pose_model = _PoseLandmarker.create_from_options(
     )
 )
 
+# -----------------------------
+# Gesture ML Model (TFLite)
+# -----------------------------
+GESTURE_MODEL_PATH = "gesture_model.tflite"
+gesture_interpreter = Interpreter(model_path=GESTURE_MODEL_PATH)
+gesture_interpreter.allocate_tensors()
+gesture_input_details  = gesture_interpreter.get_input_details()
+gesture_output_details = gesture_interpreter.get_output_details()
+
+GESTURE_LABELS = ["Neutral", "Eye Scratch", "Head Scratch", "Chin Rest",
+                  "Nose Scratching", "Neck Rubbing", "Fidgeting"]
+GESTURE_TIME_STEPS = 15   # must match training window
+GESTURE_N_FEATURES = 99   # 33 landmarks * 3 (x, y, z)
+GESTURE_CONFIDENCE = 0.60 # minimum confidence to accept a prediction
+
+print(f"Gesture ML model loaded: {GESTURE_MODEL_PATH}")
+
 # Posture state 
 posture_label     = "Unknown"
 posture_score     = 0.0        # 0.0 = Relaxed, 1.0 = Very Tense
 posture_gap_debug = "..."      
 
 # Gesture state
-gesture_label  = "Neutral"     # current confirmed gesture label
-gesture_buffer = deque(maxlen=15)  # ~1.5s of smoothing at every-3rd-frame rate
-
-# Thresholds (normalized 0.0-1.0 landmark coordinates)
-# NOTE: dist() measures wrist-to-landmark distance. Because the wrist sits
-# several centimeters behind the fingertips, all thresholds must account for
-# the wrist-to-fingertip offset (~0.10-0.15 units at typical camera distances).
-# The bounding box rules for gestures
-GEST_PROXIMITY  = 0.45  # Index finger must be within this distance to nose to count as a gesture
-GEST_CHIN_Y     = 0.05  # How far below the nose starts the "Chin Rest" zone
-GEST_EYE_TOP    = 0.18  # How far above the nose is the top of the "Eye" zone
-GEST_EYE_WIDTH  = 0.15  # How wide from the center of the nose is the "Eye" zone
-gesture_debug_dist = "0.00"
+gesture_label  = "Neutral"
+gesture_landmark_buffer = deque(maxlen=GESTURE_TIME_STEPS)  # rolling window of normalized landmarks
+gesture_buffer = deque(maxlen=15)  # temporal smoothing of predictions
 
 # Per-face posture history for graphing
 face_posture_history = {}     
@@ -408,46 +415,36 @@ while True:
                 posture_label = "Relaxed"
                 posture_score = 0.0
 
-            # Gesture Detection
-            left_wrist  = lm[15]   # Landmark 15 = Left Wrist
-            right_wrist = lm[16]   # Landmark 16 = Right Wrist
-            left_index  = lm[19]   # Landmark 19 = Left Index
-            right_index = lm[20]   # Landmark 20 = Right Index
-            ear_left    = lm[7]    # Landmark 7  = Left Ear
-            ear_right   = lm[8]    # Landmark 8  = Right Ear
-            eye_left    = lm[2]    # Landmark 2  = Left Eye
-            eye_right   = lm[5]    # Landmark 5  = Right Eye
+            # ── Gesture Detection (ML) ─────────────────────────────────
+            # Normalize all 33 landmarks relative to nose (same as training)
+            pts = np.array([[l.x, l.y, l.z] for l in lm], dtype=np.float32)
+            pts -= pts[0]  # subtract nose position
+            gesture_landmark_buffer.append(pts.flatten())
 
-            # Distance from each wrist to nose, pick the closer (active) side
-            d_left  = dist(left_wrist,  nose)
-            d_right = dist(right_wrist, nose)
-            active_wrist = left_wrist if d_left <= d_right else right_wrist
-            active_index = left_index if d_left <= d_right else right_index
-            d_near       = min(d_left, d_right)
+            if len(gesture_landmark_buffer) == GESTURE_TIME_STEPS:
+                # Build input tensor: shape (1, 15, 99)
+                input_seq = np.array(list(gesture_landmark_buffer), dtype=np.float32)
+                input_seq = np.expand_dims(input_seq, axis=0)
 
-            # Distance from index finger to nose to ensure hand is near the face
-            idx_dist = dist(active_index, nose)
+                gesture_interpreter.set_tensor(
+                    gesture_input_details[0]['index'], input_seq
+                )
+                gesture_interpreter.invoke()
+                prediction = gesture_interpreter.get_tensor(
+                    gesture_output_details[0]['index']
+                )[0]
 
-            # We use a pure anatomical bounding-box approach using the index finger.
-            # This completely bypasses the Euclidean distance errors of the Lite model.
-            
-            if idx_dist < GEST_PROXIMITY:
-                # 1 CHIN ZONE
-                if active_index.y > nose.y + GEST_CHIN_Y:
-                    raw_gesture = "Chin Rest"
-                
-                # 2 EYE ZONE
-                elif (active_index.y > nose.y - GEST_EYE_TOP 
-                      and abs(active_index.x - nose.x) < GEST_EYE_WIDTH):
-                    raw_gesture = "Eye Scratch"
-                
-                # 3 HEAD ZONE
+                best_idx  = int(np.argmax(prediction))
+                best_conf = float(prediction[best_idx])
+
+                if best_conf >= GESTURE_CONFIDENCE:
+                    raw_gesture = GESTURE_LABELS[best_idx]
                 else:
-                    raw_gesture = "Head Scratch"
+                    raw_gesture = "Neutral"
             else:
                 raw_gesture = "Neutral"
 
-            # Temporal smoothing 
+            # Temporal smoothing
             gesture_buffer.append(raw_gesture)
             gesture_label = Counter(gesture_buffer).most_common(1)[0][0]
 
