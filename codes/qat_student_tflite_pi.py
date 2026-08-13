@@ -354,11 +354,11 @@ def engineer_features(pts):
     return np.array(feats, dtype=np.float32)
 
 def _gesture_inference_loop():
-    """Background thread: runs gesture ML inference every 0.5s without blocking video."""
+    """Background thread: runs gesture ML inference without blocking video."""
     global gesture_label
     print("[GestureThread] Started.")
     while True:
-        time.sleep(0.5)
+        time.sleep(0.15)  # Poll much faster to reduce perceived lag
         if len(gesture_landmark_buffer) < GESTURE_TIME_STEPS:
             continue
         try:
@@ -389,15 +389,11 @@ def _gesture_inference_loop():
             gesture_buffer.append(raw_gesture)
             gesture_label = Counter(gesture_buffer).most_common(1)[0][0]
 
-            # Diagnostic: show all class probabilities + key landmarks
+            # Diagnostic: show all class probabilities
             probs_str = " | ".join(
                 f"{GESTURE_LABELS[i][:5]}:{prediction[i]:.2f}" for i in range(len(prediction))
             )
-            # Show raw wrist positions from the input (landmarks 15,16 = wrists, relative to nose)
-            wrist_l = input_seq[0, -1, 45:48]  # last frame, landmark 15 (left wrist) x,y,z
-            wrist_r = input_seq[0, -1, 48:51]  # last frame, landmark 16 (right wrist) x,y,z
             print(f"[Gesture] {raw_gesture} ({best_conf:.2f}) | {probs_str}")
-            print(f"  Wrist L: x={wrist_l[0]:.3f} y={wrist_l[1]:.3f} | Wrist R: x={wrist_r[0]:.3f} y={wrist_r[1]:.3f}")
 
         except Exception as e:
             print(f"[GestureThread ERROR] {e}")
