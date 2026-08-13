@@ -2,16 +2,15 @@ import os
 import pandas as pd
 import numpy as np
 import tensorflow as tf
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import GroupShuffleSplit
 from sklearn.metrics import confusion_matrix
 import matplotlib.pyplot as plt
 import seaborn as sns
 
 print("TensorFlow Version:", tf.__version__)
 
-# Configuration - load from BOTH laptop and Pi datasets for robustness
+# Configuration - Pi camera data only (laptop webcam data doesn't transfer due to framing mismatch)
 DATASET_DIRS = [
-    r"C:\Users\user\Documents\Emosys\EmoSys - KD N QAT\EmoSys - KD N QAT\Gesture Dataset",
     r"C:\Users\user\Documents\Emosys\EmoSys - KD N QAT\EmoSys - KD N QAT\Gesture Dataset Pi",
 ]
 MODEL_SAVE_PATH = r"C:\Users\user\Documents\Emosys\EmoSys - KD N QAT\EmoSys - KD N QAT\codes\gesture_model.h5"
@@ -42,40 +41,61 @@ for file in csv_files:
 
 df = pd.concat(df_list, ignore_index=True)
 
-labels = df['label'].values
-features = df.drop('label', axis=1).values
+labels     = df['label'].values
+person_ids = df['person_id'].values
+features   = df.drop(['label', 'person_id'], axis=1).values
+
+unique_persons = sorted(set(person_ids))
+print(f"\n  Persons found: {unique_persons}  ({len(unique_persons)} total)")
+for pid in unique_persons:
+    count = (person_ids == pid).sum()
+    print(f"    Person {pid}: {count} frames")
 
 # 2. Create Temporal Windows (Sequences)
 print(f"\n[2/7] Creating {TIME_STEPS}-frame time-series sequences...")
-X, y = [], []
+X, y, groups = [], [], []
 
-# We create sequences but ensure we don't mix different labels in a single sequence
+# We create sequences but ensure we don't mix different labels OR persons
 current_seq = []
 current_label = -1
+current_person = -1
 
 for i in range(len(features)):
-    if labels[i] != current_label:
+    # Reset sequence if label or person changes
+    if labels[i] != current_label or person_ids[i] != current_person:
         current_seq = []
         current_label = labels[i]
-        
+        current_person = person_ids[i]
+
     current_seq.append(features[i])
-    
+
     if len(current_seq) == TIME_STEPS:
         X.append(current_seq)
         y.append(current_label)
+        groups.append(current_person)  # track which person this window belongs to
         # Shift sequence by 1 frame (overlap) for maximum data extraction
         current_seq = current_seq[1:]
 
 X = np.array(X, dtype=np.float32)
 y = np.array(y, dtype=np.int32)
+groups = np.array(groups, dtype=np.int32)
 
 print(f"Total sequences generated: {len(X)}")
 print(f"Input shape (Samples, Time Steps, Features): {X.shape}")
 
-# 3. Train/Test Split
-print("\n[3/7] Splitting data into Training and Validation sets...")
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
-print(f"Training on {len(X_train)} sequences, Validating on {len(X_test)} sequences.")
+# 3. Train/Test Split BY PERSON (prevents data leakage)
+print("\n[3/7] Splitting data by PERSON into Training and Validation sets...")
+gss = GroupShuffleSplit(n_splits=1, test_size=0.2, random_state=42)
+train_idx, test_idx = next(gss.split(X, y, groups))
+
+X_train, X_test = X[train_idx], X[test_idx]
+y_train, y_test = y[train_idx], y[test_idx]
+
+train_persons = sorted(set(groups[train_idx]))
+test_persons  = sorted(set(groups[test_idx]))
+print(f"  Train persons: {train_persons}  ({len(X_train)} sequences)")
+print(f"  Test  persons: {test_persons}  ({len(X_test)} sequences)")
+print(f"  -> No person appears in BOTH train and test sets ✓")
 
 # 4. Build Conv1D Model (TFLite-compatible alternative to LSTM)
 print("\n[4/7] Building Keras Conv1D Model...")
