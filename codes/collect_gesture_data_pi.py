@@ -30,7 +30,7 @@ LABELS = {
     6: "Fidgeting",
 }
 
-# ── Ask for gesture class in terminal ─────────────────────────────────────────
+# ── Ask for gesture class and person ID in terminal ───────────────────────────
 print("\n--- PI GESTURE DATA COLLECTION ---")
 print("Which gesture do you want to record?\n")
 for k, v in LABELS.items():
@@ -44,11 +44,17 @@ except Exception:
     print("Invalid input. Defaulting to 0 (Neutral).")
     current_label = 0
 
+try:
+    person_id = int(input("Enter person ID (e.g. 1, 2, 3...): ").strip())
+except Exception:
+    print("Invalid input. Defaulting to person 0.")
+    person_id = 0
+
 gesture_name = LABELS[current_label]
 output_dir   = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Gesture Dataset Pi")
 os.makedirs(output_dir, exist_ok=True)
 csv_file     = os.path.join(output_dir, f"dataset_gesture_{current_label}.csv")
-print(f"\nRecording: [{current_label}] {gesture_name}")
+print(f"\nRecording: [{current_label}] {gesture_name}  |  Person: {person_id}")
 print(f"Output   : {csv_file}")
 print("Press R to start, Space to pause, Q to quit.\n")
 
@@ -79,7 +85,7 @@ is_new_file = not os.path.exists(csv_file)
 csv_handle  = open(csv_file, mode='a', newline='')
 writer      = csv.writer(csv_handle)
 if is_new_file:
-    writer.writerow(['label'] + [f'f_{i}' for i in range(N_FEATURES)])
+    writer.writerow(['label', 'person_id'] + [f'f_{i}' for i in range(N_FEATURES)])
 
 # ── Pi Camera ─────────────────────────────────────────────────────────────────
 picam2 = Picamera2()
@@ -119,7 +125,7 @@ while True:
     # ── Save data if recording ─────────────────────────────────────────────
     if is_recording and pose_detected:
         features = extract_features(result.pose_landmarks[0])
-        writer.writerow([current_label] + features.tolist())
+        writer.writerow([current_label, person_id] + features.tolist())
         frames_saved += 1
 
     # ── UI Overlay ─────────────────────────────────────────────────────────

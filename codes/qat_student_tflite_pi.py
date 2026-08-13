@@ -350,10 +350,9 @@ def _gesture_inference_loop():
                     gesture_output_details[0]['index']
                 )[0]
 
-            # Apply softmax manually (TFLite conversion strips it)
-            exp_logits = np.exp(logits - np.max(logits))
-            prediction = exp_logits / exp_logits.sum()
-
+            # The Conv1D model retains its softmax layer in TFLite, so outputs are already probabilities
+            prediction = logits
+            
             best_idx  = int(np.argmax(prediction))
             best_conf = float(prediction[best_idx])
 
