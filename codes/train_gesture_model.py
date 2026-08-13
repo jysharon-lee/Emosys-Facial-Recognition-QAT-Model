@@ -2,27 +2,74 @@ import os
 import pandas as pd
 import numpy as np
 import tensorflow as tf
-from sklearn.model_selection import GroupShuffleSplit
+from sklearn.model_selection import LeaveOneGroupOut
 from sklearn.metrics import confusion_matrix
 import matplotlib.pyplot as plt
 import seaborn as sns
+import glob
 
 print("TensorFlow Version:", tf.__version__)
 
-# Configuration - Pi camera data only (laptop webcam data doesn't transfer due to framing mismatch)
+# Configuration
 DATASET_DIRS = [
     r"C:\Users\user\Documents\Emosys\EmoSys - KD N QAT\EmoSys - KD N QAT\Gesture Dataset Pi",
 ]
 MODEL_SAVE_PATH = r"C:\Users\user\Documents\Emosys\EmoSys - KD N QAT\EmoSys - KD N QAT\codes\gesture_model.h5"
 TFLITE_SAVE_PATH = r"C:\Users\user\Documents\Emosys\EmoSys - KD N QAT\EmoSys - KD N QAT\codes\gesture_model.tflite"
 
-TIME_STEPS = 15  # Window of 15 frames (~0.5 seconds of movement)
-N_FEATURES = 99  # 33 pose landmarks * 3 coordinates
+TIME_STEPS = 15
 N_CLASSES = 7
 
-# 1. Load Data
+GESTURE_LABELS = ["Neutral", "Eye Scratch", "Head Scratch", "Chin Rest",
+                  "Nose Scratch", "Neck Rub", "Fidget"]
+
+# ── Distance-based feature engineering ────────────────────────────────────────
+# Instead of raw (x,y,z) coordinates, compute distances from each hand to
+# key face/head landmarks. These distances are naturally invariant to body
+# proportions and person identity.
+#
+# MediaPipe Pose landmark indices:
+#   0=nose, 2=left_eye, 5=right_eye, 7=left_ear, 8=right_ear,
+#   9=mouth_left, 10=mouth_right, 11=left_shoulder, 12=right_shoulder,
+#   13=left_elbow, 14=right_elbow, 15=left_wrist, 16=right_wrist,
+#   19=left_index, 20=right_index
+
+FACE_TARGETS = [0, 2, 5, 7, 8, 9, 10]  # nose, eyes, ears, mouth corners
+HAND_LANDMARKS = [15, 16, 19, 20]       # wrists + index fingertips
+
+def engineer_features(pts_flat):
+    """
+    Convert 99 raw coordinates (33 landmarks x 3, nose-centered + shoulder-normalized)
+    into distance-based features that are person-invariant.
+    """
+    pts = pts_flat.reshape(33, 3)
+    feats = []
+
+    neck = (pts[11] + pts[12]) / 2.0  # midpoint of shoulders
+
+    # For each hand point: distances to face targets + neck + vertical position
+    for h in HAND_LANDMARKS:
+        hand = pts[h]
+        for t in FACE_TARGETS:
+            feats.append(np.linalg.norm(hand - pts[t]))
+        feats.append(np.linalg.norm(hand - neck))
+        feats.append(hand[1])  # y-position (height relative to nose)
+
+    # Inter-hand distance (wrists)
+    feats.append(np.linalg.norm(pts[15] - pts[16]))
+
+    # Elbow heights (indicates arm raising)
+    feats.append(pts[13][1])
+    feats.append(pts[14][1])
+
+    return np.array(feats, dtype=np.float32)
+
+# Per hand: 7 face dists + 1 neck dist + 1 y-pos = 9 features
+# 4 hands x 9 = 36, + 1 inter-hand + 2 elbows = 39
+N_FEATURES = 39
+
+# ── 1. Load Data ──────────────────────────────────────────────────────────────
 print("\n[1/7] Loading datasets...")
-import glob
 
 csv_files = []
 for d in DATASET_DIRS:
@@ -31,7 +78,7 @@ for d in DATASET_DIRS:
     print(f"  Found {len(found)} files in {os.path.basename(d)}/")
 
 if not csv_files:
-    print(f"ERROR: Cannot find any dataset files.")
+    print("ERROR: Cannot find any dataset files.")
     exit()
 
 df_list = []
@@ -43,7 +90,7 @@ df = pd.concat(df_list, ignore_index=True)
 
 labels     = df['label'].values
 person_ids = df['person_id'].values
-features   = df.drop(['label', 'person_id'], axis=1).values
+raw_features = df.drop(['label', 'person_id'], axis=1).values.astype(np.float32)
 
 unique_persons = sorted(set(person_ids))
 print(f"\n  Persons found: {unique_persons}  ({len(unique_persons)} total)")
@@ -51,17 +98,20 @@ for pid in unique_persons:
     count = (person_ids == pid).sum()
     print(f"    Person {pid}: {count} frames")
 
-# 2. Create Temporal Windows (Sequences)
+# ── 1.5. Engineer features ────────────────────────────────────────────────────
+print(f"\n[1.5/7] Engineering {N_FEATURES} distance-based features from raw coordinates...")
+features = np.array([engineer_features(row) for row in raw_features], dtype=np.float32)
+print(f"  Transformed {raw_features.shape} -> {features.shape}")
+
+# ── 2. Create Temporal Windows ────────────────────────────────────────────────
 print(f"\n[2/7] Creating {TIME_STEPS}-frame time-series sequences...")
 X, y, groups = [], [], []
 
-# We create sequences but ensure we don't mix different labels OR persons
 current_seq = []
 current_label = -1
 current_person = -1
 
 for i in range(len(features)):
-    # Reset sequence if label or person changes
     if labels[i] != current_label or person_ids[i] != current_person:
         current_seq = []
         current_label = labels[i]
@@ -72,8 +122,7 @@ for i in range(len(features)):
     if len(current_seq) == TIME_STEPS:
         X.append(current_seq)
         y.append(current_label)
-        groups.append(current_person)  # track which person this window belongs to
-        # Shift sequence by 1 frame (overlap) for maximum data extraction
+        groups.append(current_person)
         current_seq = current_seq[1:]
 
 X = np.array(X, dtype=np.float32)
@@ -83,86 +132,112 @@ groups = np.array(groups, dtype=np.int32)
 print(f"Total sequences generated: {len(X)}")
 print(f"Input shape (Samples, Time Steps, Features): {X.shape}")
 
-# 3. Train/Test Split BY PERSON (prevents data leakage)
-print("\n[3/7] Splitting data by PERSON into Training and Validation sets...")
-gss = GroupShuffleSplit(n_splits=1, test_size=0.2, random_state=42)
-train_idx, test_idx = next(gss.split(X, y, groups))
+# ── 3. Leave-One-Person-Out Cross-Validation ──────────────────────────────────
+print("\n[3/7] Leave-One-Person-Out Cross-Validation...")
+logo = LeaveOneGroupOut()
 
-X_train, X_test = X[train_idx], X[test_idx]
-y_train, y_test = y[train_idx], y[test_idx]
+fold_results = []
+for fold, (train_idx, test_idx) in enumerate(logo.split(X, y, groups)):
+    test_person = sorted(set(groups[test_idx]))[0]
+    train_persons = sorted(set(groups[train_idx]))
 
-train_persons = sorted(set(groups[train_idx]))
-test_persons  = sorted(set(groups[test_idx]))
-print(f"  Train persons: {train_persons}  ({len(X_train)} sequences)")
-print(f"  Test  persons: {test_persons}  ({len(X_test)} sequences)")
-print(f"  -> No person appears in BOTH train and test sets ✓")
+    X_tr, X_te = X[train_idx], X[test_idx]
+    y_tr, y_te = y[train_idx], y[test_idx]
 
-# 4. Build Conv1D Model (TFLite-compatible alternative to LSTM)
-print("\n[4/7] Building Keras Conv1D Model...")
-model = tf.keras.Sequential([
+    # Data augmentation (noise only, not scale - already normalized)
+    X_aug, y_aug = list(X_tr), list(y_tr)
+    for i in range(len(X_tr)):
+        for _ in range(2):  # 2 augmented copies
+            noise = np.random.normal(0, 0.03, X_tr[i].shape).astype(np.float32)
+            X_aug.append(X_tr[i] + noise)
+            y_aug.append(y_tr[i])
+    X_tr = np.array(X_aug, dtype=np.float32)
+    y_tr = np.array(y_aug, dtype=np.int32)
+
+    model = tf.keras.Sequential([
+        tf.keras.layers.Input(shape=(TIME_STEPS, N_FEATURES)),
+        tf.keras.layers.Conv1D(64, kernel_size=3, activation='relu', padding='same'),
+        tf.keras.layers.Conv1D(32, kernel_size=3, activation='relu', padding='same'),
+        tf.keras.layers.GlobalAveragePooling1D(),
+        tf.keras.layers.Dropout(0.4),
+        tf.keras.layers.Dense(32, activation='relu'),
+        tf.keras.layers.Dropout(0.2),
+        tf.keras.layers.Dense(N_CLASSES, activation='softmax')
+    ])
+    model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+
+    model.fit(X_tr, y_tr, epochs=30, batch_size=64, verbose=0,
+              callbacks=[tf.keras.callbacks.EarlyStopping(patience=5, restore_best_weights=True)],
+              validation_data=(X_te, y_te))
+
+    loss, acc = model.evaluate(X_te, y_te, verbose=0)
+    fold_results.append((test_person, acc))
+    print(f"  Fold {fold+1}: Test person={test_person}, Train persons={train_persons} -> Accuracy: {acc*100:.1f}%")
+
+avg_acc = np.mean([a for _, a in fold_results])
+print(f"\n  Average Leave-One-Out Accuracy: {avg_acc*100:.1f}%")
+
+# ── 4. Final model: train on ALL data ─────────────────────────────────────────
+print("\n[4/7] Training final model on ALL persons...")
+
+# Augment all data
+X_aug, y_aug = list(X), list(y)
+for i in range(len(X)):
+    for _ in range(2):
+        noise = np.random.normal(0, 0.03, X[i].shape).astype(np.float32)
+        X_aug.append(X[i] + noise)
+        y_aug.append(y[i])
+X_all = np.array(X_aug, dtype=np.float32)
+y_all = np.array(y_aug, dtype=np.int32)
+
+print(f"  Training on {len(X_all)} sequences (all persons + augmented)")
+
+final_model = tf.keras.Sequential([
     tf.keras.layers.Input(shape=(TIME_STEPS, N_FEATURES)),
     tf.keras.layers.Conv1D(64, kernel_size=3, activation='relu', padding='same'),
     tf.keras.layers.Conv1D(32, kernel_size=3, activation='relu', padding='same'),
     tf.keras.layers.GlobalAveragePooling1D(),
-    tf.keras.layers.Dropout(0.3),
+    tf.keras.layers.Dropout(0.4),
     tf.keras.layers.Dense(32, activation='relu'),
+    tf.keras.layers.Dropout(0.2),
     tf.keras.layers.Dense(N_CLASSES, activation='softmax')
 ])
 
-model.compile(optimizer='adam',
-              loss='sparse_categorical_crossentropy',
-              metrics=['accuracy'])
-model.summary()
+final_model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+final_model.summary()
 
-# 5. Train Model
-print("\n[5/7] Training Model...")
-callbacks = [
-    tf.keras.callbacks.EarlyStopping(patience=5, restore_best_weights=True)
-]
-
-history = model.fit(
-    X_train, y_train,
-    validation_data=(X_test, y_test),
+history = final_model.fit(
+    X_all, y_all,
     epochs=30,
     batch_size=64,
-    callbacks=callbacks
+    verbose=1
 )
 
-# 6. Evaluate
-loss, acc = model.evaluate(X_test, y_test, verbose=0)
-print(f"\nFinal Validation Accuracy: {acc*100:.2f}%")
-
-model.save(MODEL_SAVE_PATH)
+final_model.save(MODEL_SAVE_PATH)
 print(f"Saved Keras model to: {MODEL_SAVE_PATH}")
 
-# 7. Convert to TFLite (Quantization)
-print("\n[6/7] Compiling to quantized TensorFlow Lite model for Raspberry Pi...")
-converter = tf.lite.TFLiteConverter.from_keras_model(model)
+# ── 5. Convert to TFLite ─────────────────────────────────────────────────────
+print("\n[5/7] Compiling to quantized TensorFlow Lite model for Raspberry Pi...")
+converter = tf.lite.TFLiteConverter.from_keras_model(final_model)
 converter.optimizations = [tf.lite.Optimize.DEFAULT]
 tflite_model = converter.convert()
 
 with open(TFLITE_SAVE_PATH, 'wb') as f:
     f.write(tflite_model)
-    
+
 size_kb = os.path.getsize(TFLITE_SAVE_PATH) / 1024
 print(f"Saved TFLite model to: {TFLITE_SAVE_PATH}")
 print(f"--> FINAL TFLITE SIZE: {size_kb:.2f} KB <--")
 
-# 8. Plot Confusion Matrix
-print("\n[7/7] Generating Confusion Matrix Plot...")
-y_pred = np.argmax(model.predict(X_test, verbose=0), axis=1)
-cm = confusion_matrix(y_test, y_pred)
-plt.figure(figsize=(10,8))
-sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
-            xticklabels=["Neutral", "Eye Scratch", "Head Scratch", "Chin Rest", "Nose Scratch", "Neck Rub", "Fidget"],
-            yticklabels=["Neutral", "Eye Scratch", "Head Scratch", "Chin Rest", "Nose Scratch", "Neck Rub", "Fidget"])
-plt.ylabel('Actual Label')
-plt.xlabel('Predicted Label')
-plt.title(f'Gesture Model Validation (Accuracy: {acc*100:.2f}%)')
-plt.tight_layout()
-cm_path = os.path.join(os.path.dirname(MODEL_SAVE_PATH), "confusion_matrix.png")
-plt.savefig(cm_path)
-print(f"Saved confusion matrix plot to: {cm_path}")
+# ── 6. Summary ────────────────────────────────────────────────────────────────
+print("\n[6/7] Results Summary:")
+print("=" * 60)
+for person, acc in fold_results:
+    bar = "#" * int(acc * 40)
+    print(f"  Person {person}: {acc*100:5.1f}%  {bar}")
+print(f"  {'Average':>9s}: {avg_acc*100:5.1f}%")
+print("=" * 60)
 
-print("\n--- PHASE 2 COMPLETE ---")
-print("You are ready to move to Phase 3 (Raspberry Pi integration).")
+print("\n--- TRAINING COMPLETE ---")
+print(f"Cross-validated accuracy (leave-one-person-out): {avg_acc*100:.1f}%")
+print(f"Final model trained on ALL {len(unique_persons)} persons.")

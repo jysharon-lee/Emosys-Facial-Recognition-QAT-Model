@@ -62,8 +62,19 @@ print("Press R to start, Space to pause, Q to quit.\n")
 N_FEATURES = 33 * 3
 
 def extract_features(pose_landmarks):
+    """
+    Returns a flat numpy array of shape (99,).
+    1. Center on nose (landmark 0) for position invariance.
+    2. Scale by shoulder width (landmarks 11-12) for body-proportion invariance.
+    """
     pts = np.array([[lm.x, lm.y, lm.z] for lm in pose_landmarks], dtype=np.float32)
-    pts -= pts[0]   # normalize relative to nose
+    pts -= pts[0]   # center on nose
+
+    # Scale by shoulder distance so tall/short people produce the same magnitudes
+    shoulder_dist = np.linalg.norm(pts[11] - pts[12])
+    if shoulder_dist > 1e-4:  # avoid division by zero
+        pts /= shoulder_dist
+
     return pts.flatten()
 
 # ── Initialise pose model ─────────────────────────────────────────────────────

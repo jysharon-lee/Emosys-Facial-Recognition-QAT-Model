@@ -312,7 +312,7 @@ gesture_output_details = gesture_interpreter.get_output_details()
 GESTURE_LABELS = ["Neutral", "Eye Scratch", "Head Scratch", "Chin Rest",
                   "Nose Scratching", "Neck Rubbing", "Fidgeting"]
 GESTURE_TIME_STEPS = 15   # must match training window
-GESTURE_N_FEATURES = 99   # 33 landmarks * 3 (x, y, z)
+GESTURE_N_FEATURES = 39   # Distance-based features
 GESTURE_CONFIDENCE = 0.40 # minimum confidence to accept a prediction
 
 print(f"Gesture ML model loaded: {GESTURE_MODEL_PATH}")
@@ -327,6 +327,31 @@ gesture_label  = "Neutral"
 gesture_landmark_buffer = deque(maxlen=GESTURE_TIME_STEPS)  # rolling window of normalized landmarks
 gesture_buffer = deque(maxlen=15)  # temporal smoothing of predictions
 gesture_lock = threading.Lock()
+
+# ── Distance-based feature engineering ────────────────────────────────────────
+FACE_TARGETS = [0, 2, 5, 7, 8, 9, 10]  # nose, eyes, ears, mouth corners
+HAND_LANDMARKS = [15, 16, 19, 20]      # wrists + index fingertips
+
+def engineer_features(pts):
+    """
+    Convert 33 raw landmarks into 39 distance-based features that are person-invariant.
+    pts is assumed to be a (33, 3) numpy array already centered on the nose and scaled by shoulder width.
+    """
+    feats = []
+    neck = (pts[11] + pts[12]) / 2.0  # midpoint of shoulders
+
+    for h in HAND_LANDMARKS:
+        hand = pts[h]
+        for t in FACE_TARGETS:
+            feats.append(np.linalg.norm(hand - pts[t]))
+        feats.append(np.linalg.norm(hand - neck))
+        feats.append(hand[1])  # y-position
+
+    feats.append(np.linalg.norm(pts[15] - pts[16])) # Inter-hand distance
+    feats.append(pts[13][1]) # Left elbow height
+    feats.append(pts[14][1]) # Right elbow height
+
+    return np.array(feats, dtype=np.float32)
 
 def _gesture_inference_loop():
     """Background thread: runs gesture ML inference every 0.5s without blocking video."""
@@ -477,7 +502,15 @@ while True:
             # handles the heavy inference every 0.5s
             pts = np.array([[l.x, l.y, l.z] for l in lm], dtype=np.float32)
             pts -= pts[0]  # subtract nose position
-            gesture_landmark_buffer.append(pts.flatten())
+
+            # Scale by shoulder distance for body-proportion invariance
+            shoulder_dist = np.linalg.norm(pts[11] - pts[12])
+            if shoulder_dist > 1e-4:
+                pts /= shoulder_dist
+
+            # Convert to distance-based features
+            dist_feats = engineer_features(pts)
+            gesture_landmark_buffer.append(dist_feats)
 
         else:
             posture_label     = "Not Detected"
