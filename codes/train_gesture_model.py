@@ -7,6 +7,7 @@ from sklearn.metrics import confusion_matrix
 import matplotlib.pyplot as plt
 import seaborn as sns
 import glob
+from scipy.interpolate import interp1d
 
 print("TensorFlow Version:", tf.__version__)
 
@@ -37,6 +38,16 @@ GESTURE_LABELS = ["Neutral", "Eye Scratch", "Head Scratch", "Chin Rest",
 FACE_TARGETS = [0, 2, 5, 7, 8, 9, 10]  # nose, eyes, ears, mouth corners
 HAND_LANDMARKS = [15, 16, 19, 20]       # wrists + index fingertips
 
+def angle_between_cosine(a, b, c):
+    """Returns the cosine of the angle between vectors ba and bc."""
+    ba = a - b
+    bc = c - b
+    norm_ba = np.linalg.norm(ba)
+    norm_bc = np.linalg.norm(bc)
+    if norm_ba < 1e-4 or norm_bc < 1e-4:
+        return 0.0
+    return np.dot(ba, bc) / (norm_ba * norm_bc)
+
 def engineer_features(pts_flat):
     """
     Convert 99 raw coordinates (33 landmarks x 3, nose-centered + shoulder-normalized)
@@ -62,11 +73,17 @@ def engineer_features(pts_flat):
     feats.append(pts[13][1])
     feats.append(pts[14][1])
 
+    # ── Option B: Joint Angle Features ──
+    # Left elbow angle (Shoulder[11] - Elbow[13] - Wrist[15])
+    feats.append(angle_between_cosine(pts[11], pts[13], pts[15]))
+    # Right elbow angle (Shoulder[12] - Elbow[14] - Wrist[16])
+    feats.append(angle_between_cosine(pts[12], pts[14], pts[16]))
+
     return np.array(feats, dtype=np.float32)
 
 # Per hand: 7 face dists + 1 neck dist + 1 y-pos = 9 features
-# 4 hands x 9 = 36, + 1 inter-hand + 2 elbows = 39
-N_FEATURES = 39
+# 4 hands x 9 = 36, + 1 inter-hand + 2 elbows + 2 elbow angles = 41
+N_FEATURES = 41
 
 # ── 1. Load Data ──────────────────────────────────────────────────────────────
 print("\n[1/7] Loading datasets...")
@@ -144,12 +161,23 @@ for fold, (train_idx, test_idx) in enumerate(logo.split(X, y, groups)):
     X_tr, X_te = X[train_idx], X[test_idx]
     y_tr, y_te = y[train_idx], y[test_idx]
 
-    # Data augmentation (noise only, not scale - already normalized)
+    # Data augmentation (noise + temporal warping)
     X_aug, y_aug = list(X_tr), list(y_tr)
+    
+    def temporal_warp(seq, max_warp=0.15):
+        time_ax = np.linspace(0, 1, seq.shape[0])
+        f = interp1d(time_ax, seq, axis=0, kind='linear', fill_value='extrapolate')
+        warp_factor = np.random.uniform(1.0 - max_warp, 1.0 + max_warp)
+        new_time = np.linspace(0, warp_factor, seq.shape[0])
+        return f(new_time).astype(np.float32)
+
     for i in range(len(X_tr)):
         for _ in range(2):  # 2 augmented copies
-            noise = np.random.normal(0, 0.03, X_tr[i].shape).astype(np.float32)
-            X_aug.append(X_tr[i] + noise)
+            # Option A: Temporal Warping (stretch/compress time by ±15%)
+            warped = temporal_warp(X_tr[i], max_warp=0.15)
+            # Add spatial jitter
+            noise = np.random.normal(0, 0.03, warped.shape).astype(np.float32)
+            X_aug.append(warped + noise)
             y_aug.append(y_tr[i])
     X_tr = np.array(X_aug, dtype=np.float32)
     y_tr = np.array(y_aug, dtype=np.int32)
@@ -182,10 +210,19 @@ print("\n[4/7] Training final model on ALL persons...")
 
 # Augment all data
 X_aug, y_aug = list(X), list(y)
+
+def temporal_warp(seq, max_warp=0.15):
+    time_ax = np.linspace(0, 1, seq.shape[0])
+    f = interp1d(time_ax, seq, axis=0, kind='linear', fill_value='extrapolate')
+    warp_factor = np.random.uniform(1.0 - max_warp, 1.0 + max_warp)
+    new_time = np.linspace(0, warp_factor, seq.shape[0])
+    return f(new_time).astype(np.float32)
+
 for i in range(len(X)):
     for _ in range(2):
-        noise = np.random.normal(0, 0.03, X[i].shape).astype(np.float32)
-        X_aug.append(X[i] + noise)
+        warped = temporal_warp(X[i], max_warp=0.15)
+        noise = np.random.normal(0, 0.03, warped.shape).astype(np.float32)
+        X_aug.append(warped + noise)
         y_aug.append(y[i])
 X_all = np.array(X_aug, dtype=np.float32)
 y_all = np.array(y_aug, dtype=np.int32)

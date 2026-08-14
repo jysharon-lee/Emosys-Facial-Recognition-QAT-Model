@@ -312,7 +312,7 @@ gesture_output_details = gesture_interpreter.get_output_details()
 GESTURE_LABELS = ["Neutral", "Eye Scratch", "Head Scratch", "Chin Rest",
                   "Nose Scratching", "Neck Rubbing", "Fidgeting"]
 GESTURE_TIME_STEPS = 15   # must match training window
-GESTURE_N_FEATURES = 39   # Distance-based features
+GESTURE_N_FEATURES = 41   # Distance + Angle-based features
 GESTURE_CONFIDENCE = 0.40 # minimum confidence to accept a prediction
 
 print(f"Gesture ML model loaded: {GESTURE_MODEL_PATH}")
@@ -332,9 +332,19 @@ gesture_lock = threading.Lock()
 FACE_TARGETS = [0, 2, 5, 7, 8, 9, 10]  # nose, eyes, ears, mouth corners
 HAND_LANDMARKS = [15, 16, 19, 20]      # wrists + index fingertips
 
+def angle_between_cosine(a, b, c):
+    """Returns the cosine of the angle between vectors ba and bc."""
+    ba = a - b
+    bc = c - b
+    norm_ba = np.linalg.norm(ba)
+    norm_bc = np.linalg.norm(bc)
+    if norm_ba < 1e-4 or norm_bc < 1e-4:
+        return 0.0
+    return np.dot(ba, bc) / (norm_ba * norm_bc)
+
 def engineer_features(pts):
     """
-    Convert 33 raw landmarks into 39 distance-based features that are person-invariant.
+    Convert 33 raw landmarks into 41 distance/angle-based features that are person-invariant.
     pts is assumed to be a (33, 3) numpy array already centered on the nose and scaled by shoulder width.
     """
     feats = []
@@ -350,6 +360,12 @@ def engineer_features(pts):
     feats.append(np.linalg.norm(pts[15] - pts[16])) # Inter-hand distance
     feats.append(pts[13][1]) # Left elbow height
     feats.append(pts[14][1]) # Right elbow height
+
+    # ── Option B: Joint Angle Features ──
+    # Left elbow angle (Shoulder[11] - Elbow[13] - Wrist[15])
+    feats.append(angle_between_cosine(pts[11], pts[13], pts[15]))
+    # Right elbow angle (Shoulder[12] - Elbow[14] - Wrist[16])
+    feats.append(angle_between_cosine(pts[12], pts[14], pts[16]))
 
     return np.array(feats, dtype=np.float32)
 
