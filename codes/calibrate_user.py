@@ -1,7 +1,7 @@
 import cv2
 import mediapipe as mp
 from mediapipe.tasks import python as mp_python
-from mediapipe.tasks.vision import core as mp_vision
+from mediapipe.tasks.python import vision as mp_vision
 import numpy as np
 import time
 import os
