@@ -300,6 +300,15 @@ pose_model = _PoseLandmarker.create_from_options(
 # Gesture ML Model (TFLite)
 # -----------------------------
 GESTURE_MODEL_PATH = "gesture_model.tflite"
+PERSONAL_MODEL_PATH = "gesture_model_personal.tflite"
+
+import os
+if os.path.exists(PERSONAL_MODEL_PATH):
+    print(f"\n[INFO] Found personalized user profile! Loading {PERSONAL_MODEL_PATH}...\n")
+    GESTURE_MODEL_PATH = PERSONAL_MODEL_PATH
+else:
+    print(f"\n[INFO] Loading general baseline model: {GESTURE_MODEL_PATH}\n")
+
 try:
     from ai_edge_litert.interpreter import Interpreter as GestureInterpreter
 except ImportError:

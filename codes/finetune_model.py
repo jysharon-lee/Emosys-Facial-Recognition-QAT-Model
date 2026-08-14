@@ -7,10 +7,11 @@ from scipy.interpolate import interp1d
 print("TensorFlow Version:", tf.__version__)
 
 # ── Configuration ─────────────────────────────────────────────────────────────
-BASE_MODEL_PATH = r"C:\Users\user\Documents\Emosys\EmoSys - KD N QAT\EmoSys - KD N QAT - USC\codes\gesture_model.h5"
-CALIB_CSV_PATH = r"C:\Users\user\Documents\Emosys\EmoSys - KD N QAT\EmoSys - KD N QAT - USC\codes\calibration_data.csv"
-SAVE_H5_PATH = r"C:\Users\user\Documents\Emosys\EmoSys - KD N QAT\EmoSys - KD N QAT - USC\codes\gesture_model_personal.h5"
-SAVE_TFLITE_PATH = r"C:\Users\user\Documents\Emosys\EmoSys - KD N QAT\EmoSys - KD N QAT - USC\codes\gesture_model_personal.tflite"
+curr_dir = os.path.dirname(os.path.abspath(__file__))
+BASE_MODEL_PATH = os.path.join(curr_dir, "gesture_model.h5")
+CALIB_CSV_PATH = os.path.join(curr_dir, "calibration_data.csv")
+SAVE_H5_PATH = os.path.join(curr_dir, "gesture_model_personal.h5")
+SAVE_TFLITE_PATH = os.path.join(curr_dir, "gesture_model_personal.tflite")
 
 TIME_STEPS = 15
 
