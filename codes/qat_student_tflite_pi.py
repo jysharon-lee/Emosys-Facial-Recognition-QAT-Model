@@ -158,14 +158,12 @@ FACE_TIMEOUT        = 2.0
 #stress_peak = 0
 
 # Graph variables (per-face)
-face_emotion_history = {}   # face_id -> {label: [values]}
-face_time_history    = {}   # face_id -> [timestamps]
+face_emotion_history = {}   # face_id = {label: [values]}
+face_time_history    = {}   # face_id = [timestamps]
 
 inference_times   = []
 
-# ------------------------------------------
-# Helper: draw label with black background
-# ------------------------------------------
+# draw label with black background
 FACE_PAD        = 30                # pixels of padding around face box
 TEXT_PAD        = 2                 # pixels of padding around label text
 CONF_THRESHOLD    = 0.22
@@ -191,14 +189,12 @@ def dist(a, b):
     """Euclidean distance between two normalized MediaPipe landmarks."""
     return ((a.x - b.x) ** 2 + (a.y - b.y) ** 2) ** 0.5
 
-# ------------------------------------------------------------------
 # Centroid Tracker: assigns persistent IDs to faces across frames
-# -----------------------------------------------------------------
 class CentroidTracker:
     def __init__(self, max_disappeared=100):
         self.next_id = 0
-        self.objects = {}        # id -> (cx, cy)
-        self.disappeared = {}    # id -> frames disappeared
+        self.objects = {}        # id = (cx, cy)
+        self.disappeared = {}    # id = frames disappeared
         self.max_disappeared = max_disappeared
 
     def _register(self, centroid):
@@ -296,9 +292,7 @@ pose_model = _PoseLandmarker.create_from_options(
     )
 )
 
-# -----------------------------
 # Gesture ML Model (TFLite)
-# -----------------------------
 GESTURE_MODEL_PATH = "gesture_model.tflite"
 PERSONAL_MODEL_PATH = "gesture_model_personal.tflite"
 
@@ -337,7 +331,7 @@ gesture_landmark_buffer = deque(maxlen=GESTURE_TIME_STEPS)  # rolling window of 
 gesture_buffer = deque(maxlen=15)  # temporal smoothing of predictions
 gesture_lock = threading.Lock()
 
-# ── Distance-based feature engineering ────────────────────────────────────────
+# Distance-based feature engineering
 FACE_TARGETS = [0, 2, 5, 7, 8, 9, 10]  # nose, eyes, ears, mouth corners
 HAND_LANDMARKS = [15, 16, 19, 20]      # wrists + index fingertips
 
@@ -370,7 +364,6 @@ def engineer_features(pts):
     feats.append(pts[13][1]) # Left elbow height
     feats.append(pts[14][1]) # Right elbow height
 
-    # ── Option B: Joint Angle Features ──
     # Left elbow angle (Shoulder[11] - Elbow[13] - Wrist[15])
     feats.append(angle_between_cosine(pts[11], pts[13], pts[15]))
     # Right elbow angle (Shoulder[12] - Elbow[14] - Wrist[16])
@@ -429,9 +422,7 @@ _gesture_thread.start()
 # Per-face posture history for graphing
 face_posture_history = {}     
 
-# ------------------------------------------------------------------
-# Environmental Sensing (ClimateReader)
-# ------------------------------------------------------------------
+# Environmental Sensing 
 climate_sensor = ClimateReader()
 climate_sensor.start()
 
@@ -804,8 +795,8 @@ while True:
 
                 log_text = "\n".join(lines)
                 log_file.write(log_text + "\n")
-                # flush() removed — forcing an SD-card write on every log
-                # interval stalls the main loop; Python flushes on its own schedule.
+                # flush() removed, forcing an SD-card write on every log
+                # interval stalls the main loop
 
                 history_buffer.append(f"[{timestamp}] F#{fid}: {top1_label.upper()} {top1_conf*100:.1f}%")
 
@@ -826,9 +817,8 @@ while True:
     env_discomfort = 0.0
 
     if t_val is not None:
-        # Simple Environmental Discomfort Score (0-100%)
-        # Penalties for:
-        # CO2 > 800ppm (+0 to 40)
+        # Simple Environmental Discomfort Score 
+        # Penalties for: CO2 > 800ppm (+0 to 40)
         co2_penalty = min(40.0, max(0.0, (co2_val - 800) / 10.0))
         # VOC > 100 (+0 to 30)
         voc_penalty = min(30.0, max(0.0, (voc_val - 100) / 2.0))
@@ -838,7 +828,7 @@ while True:
         env_discomfort = min(100.0, co2_penalty + voc_penalty + pm_penalty)
 
         # Log history for graph
-        if frame_count % 10 == 0:  # Save every 10 frames to avoid huge arrays
+        if frame_count % 10 == 0:  # Save every 10 frames 
             climate_history['time'].append(time.time() - start)
             climate_history['temp'].append(t_val)
             climate_history['hum'].append(h_val)
@@ -847,7 +837,7 @@ while True:
             climate_history['pm'].append(pm_val)
             climate_history['discomfort'].append(env_discomfort)
 
-        # Draw Environment UI in Top Right
+        # Draw Environment UI 
         env_x = w - 180
         env_y = 65
         cv2.rectangle(frame, (env_x - 10, env_y - 20), (w - 10, env_y + 115), (0, 0, 0), -1)
@@ -887,14 +877,12 @@ while True:
                 0.6,
                 (0, 255, 255), 2)
                 
-    # ---------------------------------------------------------
     # Streamlit CSV Writing (1x per second)
-    # ---------------------------------------------------------
     current_time_end = time.time()
     if current_time_end - last_csv_write_time >= 1.0:
         last_csv_write_time = current_time_end
         
-        # Default environment values if none exist yet
+        # Default environment values 
         write_t = t_val if t_val is not None else 0.0
         write_h = h_val if t_val is not None else 0.0
         write_c = co2_val if t_val is not None else 0.0
@@ -931,7 +919,7 @@ while True:
 
     cv2.imshow("Yunet + MB-V2 model(QAT)", frame)
 
-    # Periodic Frame Capture (every 30 seconds, face required)
+    # Periodic Frame Capture (face required)
     current_time_capture = time.time()
     if (current_time_capture - last_capture_time >= CAPTURE_INTERVAL) and frame_preds:
         capture_counter += 1
@@ -954,8 +942,6 @@ while True:
         frame_jpeg_bytes = buffer.tobytes()
         
         # 3. Send it to the dashboard
-        # Run push_result in a background thread so a slow/timeout
-        # network request never freezes the camera display loop.
         threading.Thread(
             target = push_result,
             args   = (detected_emotion, confidence_score, frame_jpeg_bytes,
