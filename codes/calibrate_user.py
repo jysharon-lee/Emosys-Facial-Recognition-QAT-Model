@@ -13,7 +13,7 @@ try:
 except ImportError:
     print("Warning: picamera2 not found. This script is intended to run on the Raspberry Pi.")
 
-# ── Configuration ─────────────────────────────────────────────────────────────
+# Configuration
 GESTURE_LABELS = ["Neutral", "Eye Scratch", "Head Scratch", "Chin Rest",
                   "Nose Scratch", "Neck Rub", "Fidget"]
 CALIBRATION_TIME = 10.0  # seconds to record per gesture
@@ -22,7 +22,7 @@ PREP_TIME = 3.0          # seconds to prepare before recording
 output_dir = os.path.dirname(os.path.abspath(__file__))
 csv_file   = os.path.join(output_dir, "calibration_data.csv")
 
-# ── Feature extraction (41 Distance + Angle features) ────────────────────────
+# Feature extraction 
 FACE_TARGETS = [0, 2, 5, 7, 8, 9, 10]
 HAND_LANDMARKS = [15, 16, 19, 20]
 N_FEATURES = 41
@@ -60,7 +60,7 @@ def extract_features(pose_landmarks):
         pts /= shoulder_dist
     return engineer_features(pts)
 
-# ── Initialise pose model ─────────────────────────────────────────────────────
+# Initialise pose model
 _BaseOptions        = mp_python.BaseOptions
 _PoseLandmarker     = mp_vision.PoseLandmarker
 _PoseLandmarkerOpts = mp_vision.PoseLandmarkerOptions
