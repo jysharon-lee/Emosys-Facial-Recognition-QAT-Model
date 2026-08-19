@@ -19,7 +19,7 @@ from mediapipe.tasks import python as mp_python
 from mediapipe.tasks.python import vision as mp_vision
 from picamera2 import Picamera2
 
-# ── Labels ────────────────────────────────────────────────────────────────────
+# Labels
 LABELS = {
     0: "Neutral",
     1: "Eye Scratch",
@@ -30,7 +30,7 @@ LABELS = {
     6: "Fidgeting",
 }
 
-# ── Ask for gesture class and person ID in terminal ───────────────────────────
+# Ask for gesture class and person ID in terminal 
 print("\n--- PI GESTURE DATA COLLECTION ---")
 print("Which gesture do you want to record?\n")
 for k, v in LABELS.items():
@@ -58,7 +58,7 @@ print(f"\nRecording: [{current_label}] {gesture_name}  |  Person: {person_id}")
 print(f"Output   : {csv_file}")
 print("Press R to start, Space to pause, Q to quit.\n")
 
-# ── Feature extraction (33 pose landmarks × 3 = 99 values) ───────────────────
+# Feature extraction
 N_FEATURES = 33 * 3
 
 def extract_features(pose_landmarks):
@@ -70,14 +70,14 @@ def extract_features(pose_landmarks):
     pts = np.array([[lm.x, lm.y, lm.z] for lm in pose_landmarks], dtype=np.float32)
     pts -= pts[0]   # center on nose
 
-    # Scale by shoulder distance so tall/short people produce the same magnitudes
+    # Scale by shoulder distance 
     shoulder_dist = np.linalg.norm(pts[11] - pts[12])
     if shoulder_dist > 1e-4:  # avoid division by zero
         pts /= shoulder_dist
 
     return pts.flatten()
 
-# ── Initialise pose model ─────────────────────────────────────────────────────
+# Initialise pose model
 _BaseOptions        = mp_python.BaseOptions
 _PoseLandmarker     = mp_vision.PoseLandmarker
 _PoseLandmarkerOpts = mp_vision.PoseLandmarkerOptions
@@ -91,20 +91,20 @@ pose_model = _PoseLandmarker.create_from_options(
     )
 )
 
-# ── Prepare CSV ───────────────────────────────────────────────────────────────
+# Prepare CSV
 is_new_file = not os.path.exists(csv_file)
 csv_handle  = open(csv_file, mode='a', newline='')
 writer      = csv.writer(csv_handle)
 if is_new_file:
     writer.writerow(['label', 'person_id'] + [f'f_{i}' for i in range(N_FEATURES)])
 
-# ── Pi Camera ─────────────────────────────────────────────────────────────────
+# Pi Camera
 picam2 = Picamera2()
 picam2.configure(picam2.create_preview_configuration(
     main={"format": "RGB888", "size": (1280, 720)}
 ))
 picam2.start()
-time.sleep(1)  # let camera warm up
+time.sleep(1) 
 print("Pi Camera started.")
 
 is_recording  = False
@@ -115,31 +115,31 @@ while True:
     if frame is None:
         continue
 
-    # ── SAME CROP AS qat_student_tflite_pi.py ──────────────────────────────
+    # SAME CROP AS qat_student_tflite_pi.py
     frame = frame[120:600, 320:960]
 
     h, w = frame.shape[:2]
 
-    # ── Run MediaPipe pose ─────────────────────────────────────────────────
+    #  Run 
     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
     result   = pose_model.detect(mp_image)
 
     pose_detected = len(result.pose_landmarks) > 0
 
-    # ── Draw landmarks ─────────────────────────────────────────────────────
+    # landmarks
     if pose_detected:
         for lm in result.pose_landmarks[0]:
             cx, cy = int(lm.x * w), int(lm.y * h)
             cv2.circle(frame, (cx, cy), 3, (0, 255, 0), -1)
 
-    # ── Save data if recording ─────────────────────────────────────────────
+    # Save data if recording 
     if is_recording and pose_detected:
         features = extract_features(result.pose_landmarks[0])
         writer.writerow([current_label, person_id] + features.tolist())
         frames_saved += 1
 
-    # ── UI Overlay ─────────────────────────────────────────────────────────
+    # UI 
     label_text  = f"Gesture: [{current_label}] {gesture_name}"
     state_text  = "RECORDING" if is_recording else "PAUSED"
     state_color = (0, 0, 255) if is_recording else (255, 80, 0)
@@ -162,7 +162,7 @@ while True:
     elif key == ord(' '):
         is_recording = False
 
-# ── Cleanup ───────────────────────────────────────────────────────────────────
+# Cleanup
 picam2.stop()
 cv2.destroyAllWindows()
 csv_handle.close()

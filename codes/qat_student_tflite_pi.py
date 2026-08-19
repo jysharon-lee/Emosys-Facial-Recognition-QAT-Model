@@ -115,7 +115,7 @@ else:
     picam2.configure(picam2.create_video_configuration(
         main={"size": (1280, 720), "format": "BGR888"}
     ))
-    picam2.start()
+    picam2.start() 
     time.sleep(1)  
     print("Pi Camera started")
     cap = None 
