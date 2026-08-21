@@ -11,7 +11,7 @@ def push_result (emotion, confidence, frame_jpeg_bytes, posture_score, posture, 
         'posture_score':posture_score,
         'posture':posture,
         'gesture':gesture,
-        'deviceId':'pi2',
+        'deviceId':'pi_2',
         'modelVersion':'v1'
     }
 
