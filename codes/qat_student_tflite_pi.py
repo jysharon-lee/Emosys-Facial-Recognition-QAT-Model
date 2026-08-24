@@ -327,7 +327,7 @@ posture_gap_debug = "..."
 # Gesture state
 gesture_label  = "Neutral"
 gesture_landmark_buffer = deque(maxlen=GESTURE_TIME_STEPS)  # rolling window of normalized landmarks
-gesture_buffer = deque(maxlen=15)  # temporal smoothing of predictions
+gesture_buffer = deque(maxlen=5)  # temporal smoothing of predictions (reduced for faster sensitivity)
 gesture_lock = threading.Lock()
 
 # Distance-based feature engineering
@@ -375,7 +375,7 @@ def _gesture_inference_loop():
     global gesture_label
     print("[GestureThread] Started.")
     while True:
-        time.sleep(0.15)  # Poll much faster to reduce perceived lag
+        time.sleep(0.05)  # Poll 20x a second to make it extremely responsive
         if len(gesture_landmark_buffer) < GESTURE_TIME_STEPS:
             continue
         try:
