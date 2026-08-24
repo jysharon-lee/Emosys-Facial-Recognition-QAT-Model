@@ -34,9 +34,8 @@ print(f"Starting Run #{run_count}")
 # -----------------------------
 yunet = cv2.FaceDetectorYN.create(
     model="face_detection_yunet_2023mar.onnx",
-    #model="yunetn_320_qdq_int8.onnx",   
-    config="",                            
-    input_size=(320, 320),                
+    config="",
+    input_size=(320, 320),
     score_threshold=0.9,
     nms_threshold=0.3,
     top_k=5000
@@ -113,7 +112,7 @@ else:
     print("Opening Pi Camera...")
     picam2 = Picamera2()
     picam2.configure(picam2.create_video_configuration(
-        main={"size": (1280, 720), "format": "BGR888"}
+        main={"size": (640, 480), "format": "BGR888"}
     ))
     picam2.start() 
     time.sleep(1)  
@@ -465,7 +464,7 @@ while True:
         if ret:
             # Picamera2 returns RGB, but OpenCV and the model expect BGR
             frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-            frame = frame[120:600, 320:960]
+            # frame is natively 640x480 now, no need to manually crop!
         
     if not ret or frame is None:
         print("Failed to grab frame.")
