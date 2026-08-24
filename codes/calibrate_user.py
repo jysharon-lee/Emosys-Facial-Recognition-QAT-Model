@@ -78,7 +78,7 @@ def main():
     print("Initializing Pi Camera...")
     picam2 = Picamera2()
     picam2.configure(picam2.create_preview_configuration(
-        main={"format": "RGB888", "size": (1280, 720)}
+        main={"format": "RGB888", "size": (640, 480)}
     ))
     picam2.start()
     time.sleep(2)
@@ -100,7 +100,7 @@ def main():
             while time.time() < prep_end:
                 frame = picam2.capture_array()
                 if frame is None: continue
-                frame = frame[120:600, 320:960]
+                # frame is natively 640x480 now, no need to manually crop!
                 
                 rem = int(prep_end - time.time()) + 1
                 cv2.putText(frame, f"Get ready for: {gesture_name}", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 165, 255), 2)
@@ -116,7 +116,7 @@ def main():
             while time.time() < record_end:
                 frame = picam2.capture_array()
                 if frame is None: continue
-                frame = frame[120:600, 320:960]
+                # frame is natively 640x480 now, no need to manually crop!
                 
                 rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
