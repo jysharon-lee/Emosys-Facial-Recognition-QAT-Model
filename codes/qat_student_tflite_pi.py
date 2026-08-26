@@ -326,8 +326,9 @@ posture_gap_debug = "..."
 
 # Gesture state
 gesture_label  = "Neutral"
+gesture_confidence = 0.0
 gesture_landmark_buffer = deque(maxlen=GESTURE_TIME_STEPS)  # rolling window of normalized landmarks
-gesture_buffer = deque(maxlen=5)  # temporal smoothing of predictions (reduced for faster sensitivity)
+gesture_buffer = deque(maxlen=15)  # temporal smoothing of predictions
 gesture_lock = threading.Lock()
 
 # Distance-based feature engineering
@@ -372,10 +373,10 @@ def engineer_features(pts):
 
 def _gesture_inference_loop():
     """Background thread: runs gesture ML inference without blocking video."""
-    global gesture_label
+    global gesture_label, gesture_confidence
     print("[GestureThread] Started.")
     while True:
-        time.sleep(0.05)  # Poll 20x a second to make it extremely responsive
+        time.sleep(0.15)  # Poll much faster to reduce perceived lag
         if len(gesture_landmark_buffer) < GESTURE_TIME_STEPS:
             continue
         try:
@@ -405,6 +406,7 @@ def _gesture_inference_loop():
 
             gesture_buffer.append(raw_gesture)
             gesture_label = Counter(gesture_buffer).most_common(1)[0][0]
+            gesture_confidence = best_conf
 
             # Diagnostic: show all class probabilities
             probs_str = " | ".join(
@@ -445,7 +447,7 @@ with open(csv_file_path, "w", newline="") as f:
         "timestamp", "person_id", "dominant_emotion", 
         "angry", "disgust", "fear", "happy", "neutral", "sad", "surprise",
         "posture_label", "posture_score",
-        "gesture",
+        "gesture", "gesture_confidence",
         "temp", "humidity", "co2", "voc", "pm", "discomfort"
     ])
 
@@ -529,6 +531,7 @@ while True:
             posture_gap_debug = "N/A"
             gesture_buffer.append("Neutral")
             gesture_label = "Neutral"
+            gesture_confidence = 0.0
 
     # detect faces every 2 frames
     if frame_count % 2 == 0:
@@ -639,7 +642,7 @@ while True:
             top1_label  = emotion_labels[top1_idx]
 
             # InfluxDB Write (rate limited to once every 5s inside the handler)
-            db.write_prediction(fid, top1_label, top1_conf, posture_score, posture_label, gesture_label)
+            db.write_prediction(fid, top1_label, top1_conf, posture_score, posture_label, gesture_label, gesture_confidence)
 
             # -----------------------------
             # Stress calculation
@@ -712,7 +715,7 @@ while True:
 
             # Gesture label below posture (clamped to stay on screen)
             gy = min(y2 + 58, frame.shape[0] - 10)
-            draw_label(frame, f"Gesture: {gesture_label}", x1, gy, 0.5, (0, 200, 255))
+            draw_label(frame, f"Gesture: {gesture_label} ({gesture_confidence:.0%})", x1, gy, 0.5, (0, 200, 255))
 
             # Draw emotion labels per face
             if top1_conf < CONF_THRESHOLD:
@@ -898,7 +901,7 @@ while True:
                     current_time_end, "None", "None", 
                     0, 0, 0, 0, 0, 0, 0,
                     posture_label, posture_score,
-                    gesture_label,
+                    gesture_label, gesture_confidence,
                     write_t, write_h, write_c, write_v, write_p, write_d
                 ])
             else:
@@ -912,7 +915,7 @@ while True:
                         current_time_end, f"Person {fid}", top_emotion, 
                         avg_p[0], avg_p[1], avg_p[2], avg_p[3], avg_p[4], avg_p[5], avg_p[6],
                         posture_label, posture_score,
-                        gesture_label,
+                        gesture_label, gesture_confidence,
                         write_t, write_h, write_c, write_v, write_p, write_d
                     ])
 
