@@ -47,7 +47,7 @@ class InfluxDBHandler:
                 self._disabled = True
                 print(f"InfluxDB disabled after {self._max_failures} consecutive failures.")
 
-    def write_prediction(self, face_id, emotion, confidence, posture_score, posture, gesture):
+    def write_prediction(self, face_id, emotion, confidence, posture_score, posture, gesture, gesture_confidence):
 
         if self._disabled:
             return
@@ -72,6 +72,7 @@ class InfluxDBHandler:
             .field("posture_score", float(posture_score))
             .field("posture", posture)
             .field("gesture", gesture)
+            .field("gesture_confidence", float(gesture_confidence))
         )
 
         # Fire-and-forget: write in a background daemon thread so the
