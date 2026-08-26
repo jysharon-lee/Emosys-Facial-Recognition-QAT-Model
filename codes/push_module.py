@@ -3,14 +3,14 @@ import requests
 PI5_URL = "http://10.0.30.7:3000/api/emotion/ingest"
 TOKEN   = "e591962c78716e9fbd2677d2125b2375"
 
-def push_result (emotion, confidence, frame_jpeg_bytes, posture_score, posture, gesture):
+def push_result (emotion, confidence, frame_jpeg_bytes, gestureLabel, gestureScore, inferenceSpeedMs):
     files = {'image': ('frame.jpg', frame_jpeg_bytes, 'image/jpeg')}
     data  = {
         'emotion':emotion,
         'confidence':confidence,
-        'posture_score':posture_score,
-        'posture':posture,
-        'gesture':gesture,
+        'gestureLabel':gestureLabel,
+        'gestureScore':gestureScore,
+        'inferenceSpeedMs':inferenceSpeedMs,
         'deviceId':'pi_2',
         'modelVersion':'v1'
     }
