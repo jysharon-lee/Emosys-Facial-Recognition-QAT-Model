@@ -10,8 +10,9 @@ def push_result (emotion, confidence, frame_jpeg_bytes, posture_score, posture, 
         'confidence':confidence,
         'posture_score':posture_score,
         'posture':posture,
-        'gesture':gesture,
-        'gesture_score':gesture_score,
+        'gestureLabel':gesture,
+        'gestureScore':gesture_score,
+        'inferenceSpeedMs': 17.0,
         'deviceId':'pi_2',
         'modelVersion':'v1'
     }
