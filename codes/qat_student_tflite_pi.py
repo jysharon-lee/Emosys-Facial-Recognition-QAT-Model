@@ -947,7 +947,7 @@ while True:
         threading.Thread(
             target = push_result,
             args   = (detected_emotion, confidence_score, frame_jpeg_bytes,
-                      posture_score, posture_label, gesture_label),
+                      posture_score, posture_label, gesture_label, gesture_confidence),
             daemon = True
         ).start()
 
