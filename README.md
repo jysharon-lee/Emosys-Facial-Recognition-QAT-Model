@@ -25,6 +25,7 @@ As it analyzes the scene, it pushes this data continuously to two places: a loca
 * **Scale-Invariant Feature Engineering:** Hand gestures are analyzed using 41 mathematically engineered distance and cosine-angle features (e.g., elbow angles, wrist-to-nose distances) that are normalized by shoulder width. This makes the AI perfectly accurate whether you are standing 2 feet or 10 feet away from the camera.
 * **Multi-Face Tracking & Posture Analysis:** Features a custom `CentroidTracker` capable of tracking multiple faces simultaneously. Uses MediaPipe Pose to calculate a real-time Body Tension Score based on shoulder-to-nose distances.
 * **Knowledge Distillation (KD) & QAT:** The core emotion model (MobileNetV2, alpha=0.5) was trained via Knowledge Distillation and Quantization-Aware Training (INT8), allowing it to run at high FPS natively on the Pi CPU.
+* **Centralized Time-Series Database:** Includes its own dedicated database (InfluxDB) capable of securely ingesting and synchronizing live data streams from multiple distributed edge devices simultaneously.
 * **External API Integration:** Seamlessly pushes JSON payloads of the live predictions to external dashboards using `push_module.py`.
 
 ---
