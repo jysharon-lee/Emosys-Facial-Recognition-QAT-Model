@@ -1,97 +1,92 @@
 # EmoSys - Real-Time Edge AI Emotion & Environment Analytics
-### Built for Raspberry Pi 5 with Pi Camera Module 3 & PC Webcams
+### Built for Raspberry Pi 5 with Pi Camera Module V3
 #### Project Built Throughout Internship at SMD Semiconductor
 #### Contributor: Aina Qistina | Sharon Lee (Product Development)
 
-EmoSys is a highly optimized Edge AI system that analyzes **human emotions**, **body posture**, **hand gestures**, and **environmental climate** in real-time. It is engineered for deployment on constrained edge devices like the Raspberry Pi, utilizing a custom-trained compressed MobileNetV2 architecture, InfluxDB for time-series logging, and a dedicated live Streamlit dashboard. It also supports standard Webcams for testing on PC.
+---
+
+## What It Is
+EmoSys is a highly optimized, real-time Edge AI system designed to understand human state and environmental conditions simultaneously. Engineered specifically for deployment on constrained edge devices like the Raspberry Pi, it runs advanced machine learning models purely on the CPU without requiring massive discrete GPUs. 
+
+## What It Does
+The system acts as a live, multi-modal monitoring tool. It watches a video feed and simultaneously detects:
+1. **Facial Expressions (Emotions)**
+2. **Body Posture (Tension & Relaxation)**
+3. **Specific Hand Gestures (Psychological self-adaptors)**
+4. **Environmental Climate (Temperature, Humidity, Air Quality)**
+
+As it analyzes the scene, it pushes this data continuously to two places: a local InfluxDB time-series database, and an external SaaS dashboard API (`Emoseeq`), allowing for real-time remote monitoring.
 
 ---
 
-## 🌟 Key Features
+## Features & Functionalities
 
+* **User-Specific Gesture Calibration (FaceID-Style):** Because human bodies vary wildly in size and shape, the system includes a 1-minute calibration pipeline (`calibrate_user.py`) that learns the exact skeletal geometry of the user. It fine-tunes a personalized `.tflite` model (`finetune_model.py`) to guarantee near 100% gesture recognition accuracy.
+* **Scale-Invariant Feature Engineering:** Hand gestures are analyzed using 41 mathematically engineered distance and cosine-angle features (e.g., elbow angles, wrist-to-nose distances) that are normalized by shoulder width. This makes the AI perfectly accurate whether you are standing 2 feet or 10 feet away from the camera.
 * **Multi-Face Tracking & Posture Analysis:** Features a custom `CentroidTracker` capable of tracking multiple faces simultaneously. Uses MediaPipe Pose to calculate a real-time Body Tension Score based on shoulder-to-nose distances.
-* **Hand Gesture Recognition:** Utilizes MediaPipe Pose landmarks combined with a heuristic spatial-temporal classifier to detect psychological self-adaptor gestures like *Chin Rest*, *Face Touch*, *Forehead Rub*, *Mouth Cover*, and *Head Scratch*.
-* **Environmental Climate Sensing (Pi Only):** Integrates directly with hardware climate sensors via I2C to read Temperature, Humidity, CO2, VOC, and Particulate Matter (PM), calculating a live Environmental Discomfort Index.
-* **Knowledge Distillation (KD) & QAT:** The core emotion model (MobileNetV2, alpha=0.5) was trained via Knowledge Distillation and Quantization-Aware Training (INT8), allowing it to run at high FPS purely on the CPU.
-* **Time-Series Database:** Logs all metrics (emotion, posture, gesture) to a local InfluxDB instance for historical querying and dashboard visualization.
-* **Live SaaS-Style Dashboard:** The AI inference script runs completely decoupled from visualization. A Streamlit web app instantly reads the live data stream, allowing you to view real-time charts from any device on the network.
+* **Knowledge Distillation (KD) & QAT:** The core emotion model (MobileNetV2, alpha=0.5) was trained via Knowledge Distillation and Quantization-Aware Training (INT8), allowing it to run at high FPS natively on the Pi CPU.
+* **External API Integration:** Seamlessly pushes JSON payloads of the live predictions to external dashboards using `push_module.py`.
 
 ---
 
-## ⚙️ Requirements & Setup
+## Hardware & Software Requirements
 
-### Python Dependencies
-To run this system, install the required packages in your virtual environment:
+### Hardware
+* **Raspberry Pi 5** (or Pi 4 with adequate cooling)
+* **Raspberry Pi Camera Module 3** (or compatible Pi Camera)
+* **Laptop/PC** (Required for the 15-second `finetune_model.py` training step, as the Pi does not run full TensorFlow)
+* *(Optional)* I2C Climate Sensors (e.g., BME680)
 
+### Software & Python Dependencies
+* **OS:** Raspberry Pi OS (64-bit recommended)
+* **Libraries (Pi):** `tflite-runtime`, `opencv-python`, `numpy`, `mediapipe`, `picamera2`, `requests`, `influxdb-client`
+* **Libraries (Laptop):** `tensorflow`, `scikit-learn`, `pandas`, `numpy`
+* **Database:** InfluxDB v2 (Running locally or remotely)
+
+---
+
+## How to Run
+
+### Step 1: User Calibration (On Raspberry Pi)
+Before running inference, you must create a personalized gesture profile so the model understands your specific skeletal structure.
 ```bash
-pip install tflite-runtime opencv-python numpy mediapipe
-pip install streamlit streamlit-autorefresh plotly pandas influxdb-client
+cd codes
+python calibrate_user.py
 ```
-*(Note: If running on Raspberry Pi, also install `picamera2`)*
+*Follow the on-screen prompts to record 10 seconds of data for each gesture. This will generate a `calibration_data.csv` file.*
 
-### InfluxDB Server Setup (Required)
-The system requires an InfluxDB server to log real-time data.
-1. Download and install InfluxDB (v2.x) for your platform (Windows, Linux, or Raspberry Pi OS) from the [InfluxData website](https://docs.influxdata.com/influxdb/v2/install/).
-2. Start the InfluxDB service.
-3. Access the InfluxDB UI (default `http://localhost:8086`) to complete the initial setup.
-4. Create a bucket named `emosys_data`.
-5. Generate an API Token and update the `INFLUX_TOKEN`, `INFLUX_ORG`, and `INFLUX_URL` variables in `codes/influxdb_handler.py`.
+### Step 2: Model Training (On Laptop)
+Because full TensorFlow is too heavy for the Raspberry Pi, you must transfer `calibration_data.csv` to your PC/Laptop.
+```bash
+# On your Laptop:
+cd codes
+python finetune_model.py
+```
+*This will generate `gesture_model_personal.tflite`. Transfer this file back to the `codes` folder on your Raspberry Pi!*
 
----
-
-## 🚀 How to Run
-
-EmoSys supports two primary execution modes depending on your hardware.
-
-### Mode A: Raspberry Pi 5 (Pi Camera Module 3)
-This mode utilizes the Picamera2 library and includes full support for **emotion**, **body posture**, **hand gesture**, and the **micro climate sensor**.
-
-1. **Start the AI Engine (Terminal 1)**
-   ```bash
-   cd ~/Downloads/'EmoSys - KD N QAT'/codes
-   source ../env/bin/activate
-   python qat_student_tflite_pi.py
-   ```
-2. **Start the Dashboard (Terminal 2)**
-   ```bash
-   cd ~/Downloads/'EmoSys - KD N QAT'/codes
-   source ../env/bin/activate
-   streamlit run dashboard.py
-   ```
-
-### Mode B: Standard PC / Laptop (Webcam or Still Images)
-If you do not have a Raspberry Pi and just want to use a standard USB/integrated webcam or test on still images, run the legacy inference code. 
-
-1. **Start the AI Engine (Terminal 1)**
-   ```bash
-   cd "codes"
-   # To run using your default Webcam:
-   python qat_student_tflite.py
-   
-   # To run a test on a specific still image:
-   python qat_student_tflite.py --image "path/to/image.jpg"
-   ```
-2. **Start the Dashboard (Terminal 2)**
-   ```bash
-   cd "codes"
-   streamlit run dashboard.py
-   ```
-
-### View the Analytics
-Once Streamlit starts, it will display a local Network URL (e.g., `http://localhost:8501`). Open that URL in your web browser to see the live, real-time analytics dashboard!
+### Step 3: Run Live Inference (On Raspberry Pi)
+Start the main engine. It will automatically detect your personal profile, read the camera, and begin pushing data to the dashboard!
+```bash
+cd codes
+python qat_student_tflite_pi.py
+```
 
 ---
 
-## 📂 Repository Structure
+## Directory & File Guide
 
-### Core & Inference
-* **`codes/qat_student_tflite_pi.py`**: The main execution engine for Raspberry Pi 5. Captures video via `Picamera2`, runs YuNet, TFLite (Emotion), MediaPipe (Posture/Gesture), and `ClimateReader`.
-* **`codes/qat_student_tflite.py`**: The standard execution engine for PC/Webcam and still images.
-* **`codes/dashboard.py`**: The Streamlit web application providing a premium SaaS-style UI.
-* **`codes/influxdb_handler.py`**: The time-series database handler for persisting metrics.
-* **`codes/climate_sensor.py`**: Hardware abstraction layer for I2C climate sensors (Pi only).
+### Core Execution Files
+* **`codes/qat_student_tflite_pi.py`**: The main execution engine for Raspberry Pi. Captures 640x480 video via `Picamera2`, runs the YuNet face detector, the TFLite Emotion model, the MediaPipe Pose/Gesture model, and manages the background threads for data pushing.
+* **`codes/calibrate_user.py`**: The data collection script. Guides the user through a 1-minute pose routine to map their unique physical dimensions to a CSV file.
+* **`codes/finetune_model.py`**: The training script (run on a laptop). It reads the CSV, freezes the Conv1D feature extraction layers, trains the dense layers on the user's specific body, and exports the final `gesture_model_personal.tflite`.
+
+### Helper Modules
+* **`codes/push_module.py`**: A loose-coupled API client. Packages the emotion, confidence, gesture, and inference speed into a JSON payload and POSTs it to the external `Emoseeq` dashboard.
+* **`codes/influxdb_handler.py`**: The time-series database handler. Connects to InfluxDB and pushes data points in a non-blocking background thread.
+* **`codes/climate_sensor.py`**: Hardware abstraction layer. Interfaces with I2C climate sensors to read Temperature, Humidity, CO2, VOC, and Particulate Matter (PM).
 
 ### Models
 * **`qat_student_int8.tflite`**: The highly compressed INT8 quantized MobileNetV2 emotion model.
+* **`gesture_model.tflite` / `gesture_model_personal.tflite`**: The Conv1D temporal gesture recognition models.
 * **`face_detection_yunet_2023mar.onnx`**: Extremely lightweight face detection model.
 * **`pose_landmarker_lite.task`**: MediaPipe's lightweight pose estimation model.
